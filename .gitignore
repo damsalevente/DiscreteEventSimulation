@@ -1,0 +1,13 @@
+.aider*
+build/
+output/
+run1.txt
+*.exe
+*.pdb
+*.obj
+*.pch
+*.log
+*.tlog/
+*.cache
+*.zip
+*.res

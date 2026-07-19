@@ -1,0 +1,60 @@
+{
+  "simulation": {
+    "max_time": 50000,
+    "max_events": 200000,
+    "seed": 0,
+    "entity_capacity": 1000
+  },
+
+  "resources": [
+    { "name": "Cashier",       "count": 1 },
+    { "name": "CoffeeMachine", "count": 10 },
+    { "name": "Seat",          "count": 50 }
+  ],
+
+  "stages": [
+    {
+      "name": "Cashier",
+      "resource": "Cashier",
+      "mode": "resource",
+      "processing_time": { "distribution": "fixed", "param1": 1 },
+      "outcomes": [
+        { "name": "ORDER_PLACED", "probability": 1.0, "next_stage": "CoffeeMachine", "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "CoffeeMachine",
+      "resource": "CoffeeMachine",
+      "mode": "resource",
+      "processing_time": { "distribution": "fixed", "param1": 3 },
+      "outcomes": [
+        { "name": "COFFEE_DONE", "probability": 1.0, "next_stage": "Seating", "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "Seating",
+      "resource": "Seat",
+      "mode": "resource",
+      "processing_time": { "distribution": "fixed", "param1": 10 },
+      "outcomes": [
+        { "name": "LEFT", "probability": 1.0, "next_stage": null }
+      ]
+    }
+  ],
+
+  "entity_arrivals": [
+    {
+      "name": "Customer",
+      "count": 500,
+      "entry_stage": "Cashier",
+      "inter_arrival": { "distribution": "exponential", "param1": 0.5 }
+    }
+  ],
+
+  "statistics": {
+    "record_events": true,
+    "record_entity_flow": true,
+    "record_resource_util": true,
+    "output_dir": "./output"
+  }
+}

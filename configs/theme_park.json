@@ -1,0 +1,93 @@
+{
+  "simulation": {
+    "max_time": 200000,
+    "max_events": 500000,
+    "seed": 7,
+    "entity_capacity": 3000
+  },
+
+  "resources": [
+    { "name": "TicketBooth",   "count": 2 },
+    { "name": "RollerCoaster", "count": 3 },
+    { "name": "FerrisWheel",   "count": 4 },
+    { "name": "DropTower",     "count": 1 },
+    { "name": "FoodStall",     "count": 2 },
+    { "name": "FastPass",      "count": 9999 }
+  ],
+
+  "stages": [
+    {
+      "name": "Entrance",
+      "resource": "TicketBooth",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.02 },
+      "outcomes": [
+        { "name": "PAY_FULL", "probability": 0.80, "next_stage": "CoasterQueue", "next_event": "ENTER" },
+        { "name": "BUY_VIP",  "probability": 0.20, "next_stage": "FastPassLane", "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "FastPassLane",
+      "resource": "FastPass",
+      "mode": "resource",
+      "processing_time": { "distribution": "fixed", "param1": 1 },
+      "outcomes": [
+        { "name": "SKIP_COASTER", "probability": 1.0, "next_stage": "WheelQueue", "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "CoasterQueue",
+      "resource": "RollerCoaster",
+      "mode": "resource",
+      "processing_time": { "distribution": "normal", "param1": 120.0, "param2": 30.0 },
+      "outcomes": [
+        { "name": "RIDE_DONE", "probability": 1.0, "next_stage": "WheelQueue", "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "WheelQueue",
+      "resource": "FerrisWheel",
+      "mode": "resource",
+      "processing_time": { "distribution": "uniform", "param1": 200.0, "param2": 400.0 },
+      "outcomes": [
+        { "name": "RIDE_DONE",   "probability": 0.85, "next_stage": "DropTowerQueue", "next_event": "ENTER" },
+        { "name": "SNACK_BREAK", "probability": 0.15, "next_stage": "FoodCourt",      "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "DropTowerQueue",
+      "resource": "DropTower",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.05 },
+      "outcomes": [
+        { "name": "RIDE_DONE",  "probability": 0.90, "next_stage": "FoodCourt", "next_event": "ENTER" },
+        { "name": "TOO_SCARED", "probability": 0.10, "next_stage": "FoodCourt", "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "FoodCourt",
+      "resource": "FoodStall",
+      "mode": "resource",
+      "processing_time": { "distribution": "normal", "param1": 75.0, "param2": 20.0 },
+      "outcomes": [
+        { "name": "LEAVES_HAPPY", "probability": 1.0, "next_stage": null }
+      ]
+    }
+  ],
+
+  "entity_arrivals": [
+    {
+      "name": "Guest",
+      "count": 800,
+      "entry_stage": "Entrance",
+      "inter_arrival": { "distribution": "exponential", "param1": 0.08 }
+    }
+  ],
+
+  "statistics": {
+    "record_events": true,
+    "record_entity_flow": true,
+    "record_resource_util": true,
+    "output_dir": "./output/theme_park"
+  }
+}

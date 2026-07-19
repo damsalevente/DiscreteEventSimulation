@@ -1,0 +1,82 @@
+{
+  "simulation": {
+    "max_time": 200000,
+    "max_events": 500000,
+    "seed": 42,
+    "entity_capacity": 500
+  },
+
+  "resources": [
+    { "name": "HIL_Machine",     "count": 2, "available_at": 0 },
+    { "name": "Vehicle_Bench",   "count": 1, "available_at": 0 },
+    { "name": "Vehicle",         "count": 1, "available_at": 40320 }
+  ],
+
+  "stages": [
+    {
+      "name": "HIL_Testing",
+      "resource": "HIL_Machine",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.005 },
+      "outcomes": [
+        { "name": "PASS", "probability": 0.70, "next_stage": "Vehicle_Bench_Test", "next_event": "ENTER" },
+        { "name": "FAIL", "probability": 0.25, "next_stage": "HIL_Testing",        "next_event": "ENTER" },
+        { "name": "SKIP", "probability": 0.05, "next_stage": null }
+      ]
+    },
+    {
+      "name": "Vehicle_Bench_Test",
+      "resource": "Vehicle_Bench",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.008 },
+      "outcomes": [
+        { "name": "PASS", "probability": 0.90, "next_stage": "Vehicle_Test", "next_event": "ENTER" },
+        { "name": "FAIL", "probability": 0.10, "next_stage": "HIL_Testing", "next_event": "ENTER" }
+      ]
+    },
+    {
+      "name": "Vehicle_Test",
+      "resource": "Vehicle",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.003 },
+      "outcomes": [
+        { "name": "PASS", "probability": 0.95, "next_stage": null },
+        { "name": "FAIL", "probability": 0.05, "next_stage": "HIL_Testing", "next_event": "ENTER" }
+      ]
+    }
+  ],
+
+  "entity_arrivals": [
+    {
+      "name": "Release65",
+      "count": 15,
+      "entry_stage": "HIL_Testing",
+      "start_time": 0,
+      "priority": 0,
+      "inter_arrival": { "distribution": "fixed", "param1": 10 }
+    },
+    {
+      "name": "Release66",
+      "count": 15,
+      "entry_stage": "HIL_Testing",
+      "start_time": 10080,
+      "priority": 1,
+      "inter_arrival": { "distribution": "fixed", "param1": 10 }
+    },
+    {
+      "name": "Release63",
+      "count": 15,
+      "entry_stage": "HIL_Testing",
+      "start_time": 20160,
+      "priority": 2,
+      "inter_arrival": { "distribution": "fixed", "param1": 10 }
+    }
+  ],
+
+  "statistics": {
+    "record_events": true,
+    "record_entity_flow": true,
+    "record_resource_util": true,
+    "output_dir": "./output/whatif"
+  }
+}

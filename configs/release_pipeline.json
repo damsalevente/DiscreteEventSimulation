@@ -1,0 +1,66 @@
+{
+  "simulation": {
+    "max_time": 1000000,
+    "max_events": 500000,
+    "seed": 0,
+    "entity_capacity": 5000
+  },
+
+  "resources": [
+    { "name": "HIL_Bench",       "count": 2 },
+    { "name": "Vehicle_Bench",   "count": 1 },
+    { "name": "Vehicle",         "count": 1 }
+  ],
+
+  "stages": [
+    {
+      "name": "HIL_Testing",
+      "resource": "HIL_Bench",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.0005 },
+      "outcomes": [
+        { "name": "PASS",  "probability": 0.65, "next_stage": "Vehicle_Bench_Testing", "next_event": "ENTER" },
+        { "name": "FAIL",  "probability": 0.25, "next_stage": "HIL_Testing",           "next_event": "ENTER" },
+        { "name": "FATAL", "probability": 0.10, "next_stage": null }
+      ]
+    },
+    {
+      "name": "Vehicle_Bench_Testing",
+      "resource": "Vehicle_Bench",
+      "mode": "resource",
+      "processing_time": { "distribution": "normal", "param1": 500.0, "param2": 100.0 },
+      "outcomes": [
+        { "name": "PASS",  "probability": 0.70, "next_stage": "Vehicle_Testing", "next_event": "ENTER" },
+        { "name": "FAIL",  "probability": 0.20, "next_stage": "HIL_Testing",     "next_event": "ENTER" },
+        { "name": "FATAL", "probability": 0.10, "next_stage": null }
+      ]
+    },
+    {
+      "name": "Vehicle_Testing",
+      "resource": "Vehicle",
+      "mode": "resource",
+      "processing_time": { "distribution": "uniform", "param1": 800.0, "param2": 1200.0 },
+      "outcomes": [
+        { "name": "PASS",  "probability": 0.80, "next_stage": null },
+        { "name": "FAIL",  "probability": 0.15, "next_stage": "HIL_Testing", "next_event": "ENTER" },
+        { "name": "FATAL", "probability": 0.05, "next_stage": null }
+      ]
+    }
+  ],
+
+  "entity_arrivals": [
+    {
+      "name": "Release",
+      "count": 5,
+      "entry_stage": "HIL_Testing",
+      "inter_arrival": { "distribution": "fixed", "param1": 20160 }
+    }
+  ],
+
+  "statistics": {
+    "record_events": true,
+    "record_entity_flow": true,
+    "record_resource_util": true,
+    "output_dir": "./output"
+  }
+}

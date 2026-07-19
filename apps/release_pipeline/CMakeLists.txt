@@ -1,0 +1,2 @@
+add_executable(release_pipeline main.c)
+target_link_libraries(release_pipeline PRIVATE des_framework)

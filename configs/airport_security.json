@@ -1,0 +1,64 @@
+{
+  "simulation": {
+    "max_time": 500000,
+    "max_events": 200000,
+    "seed": 42,
+    "entity_capacity": 2000
+  },
+
+  "resources": [
+    { "name": "ID_Check_Desk",   "count": 2 },
+    { "name": "Security_Scanner","count": 1 },
+    { "name": "Bag_Claim",       "count": 3 }
+  ],
+
+  "stages": [
+    {
+      "name": "ID_Check",
+      "resource": "ID_Check_Desk",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.2 },
+      "outcomes": [
+        { "name": "PASS",    "probability": 0.90, "next_stage": "Security_Scanner", "next_event": "ENTER" },
+        { "name": "RETRY",   "probability": 0.05, "next_stage": "ID_Check",         "next_event": "ENTER" },
+        { "name": "DENIED",  "probability": 0.05, "next_stage": null }
+      ]
+    },
+    {
+      "name": "Security_Scanner",
+      "resource": "Security_Scanner",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.1 },
+      "outcomes": [
+        { "name": "CLEAR",    "probability": 0.85, "next_stage": "Bag_Collection", "next_event": "ENTER" },
+        { "name": "FLAGGED",  "probability": 0.10, "next_stage": "ID_Check",       "next_event": "ENTER" },
+        { "name": "INCIDENT", "probability": 0.05, "next_stage": null }
+      ]
+    },
+    {
+      "name": "Bag_Collection",
+      "resource": "Bag_Claim",
+      "mode": "resource",
+      "processing_time": { "distribution": "exponential", "param1": 0.33 },
+      "outcomes": [
+        { "name": "DONE", "probability": 1.0, "next_stage": null }
+      ]
+    }
+  ],
+
+  "entity_arrivals": [
+    {
+      "name": "Passenger",
+      "count": 200,
+      "entry_stage": "ID_Check",
+      "inter_arrival": { "distribution": "exponential", "param1": 0.0167 }
+    }
+  ],
+
+  "statistics": {
+    "record_events": true,
+    "record_entity_flow": true,
+    "record_resource_util": true,
+    "output_dir": "./output/airport"
+  }
+}

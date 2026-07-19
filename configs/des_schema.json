@@ -1,0 +1,141 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DES Simulation Configuration",
+  "description": "Configuration file for the Discrete Event Simulation framework",
+  "type": "object",
+  "properties": {
+    "simulation": {
+      "type": "object",
+      "description": "Global simulation parameters",
+      "properties": {
+        "max_time":          { "type": "integer", "default": 100000, "description": "Maximum simulation time units" },
+        "max_events":        { "type": "integer", "default": 100000, "description": "Maximum number of events to process" },
+        "entity_capacity":   { "type": "integer", "default": 0, "description": "Max entities (0 = auto from arrivals)" },
+        "seed":              { "type": "integer", "default": 0, "description": "RNG seed (0 = random)" }
+      }
+    },
+    "resources": {
+      "type": "array",
+      "description": "Resource types available to stages",
+      "items": {
+        "type": "object",
+        "required": ["name", "count"],
+        "properties": {
+          "name":         { "type": "string", "description": "Unique resource name" },
+          "count":        { "type": "integer", "minimum": 1, "description": "Number of instances" },
+          "available_at": { "type": "integer", "default": 0, "description": "Time when resource becomes available (0 = immediate)" }
+        }
+      }
+    },
+    "stages": {
+      "type": "array",
+      "description": "Processing stages entities flow through",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name":     { "type": "string", "description": "Unique stage name" },
+          "resource": { "type": "string", "description": "Resource name used by this stage" },
+          "mode": {
+            "type": "string",
+            "enum": ["manual", "resource"],
+            "default": "manual",
+            "description": "'resource': auto-generates IDLE/BUSY FSM with acquire/release. 'manual': define states/events/fsm explicitly."
+          },
+          "states": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "FSM state names (manual mode only)"
+          },
+          "event_types": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "FSM event type names (manual mode only)"
+          },
+          "processing_time": { "$ref": "#/definitions/distribution" },
+          "fsm": {
+            "type": "array",
+            "description": "FSM transitions (manual mode only)",
+            "items": {
+              "type": "object",
+              "required": ["state", "event", "next_state", "action"],
+              "properties": {
+                "state":      { "type": "string", "description": "Current FSM state" },
+                "event":      { "type": "string", "description": "Triggering event type" },
+                "next_state": { "type": "string", "description": "Next FSM state" },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "acquire_and_process",
+                    "release_and_dispatch",
+                    "release_and_retry",
+                    "wait_retry",
+                    "entity_enter",
+                    "entity_exit",
+                    "none"
+                  ],
+                  "description": "Action executed on this transition"
+                }
+              }
+            }
+          },
+          "outcomes": {
+            "type": "array",
+            "description": "Probabilistic dispatch after processing completes",
+            "items": {
+              "type": "object",
+              "required": ["name", "probability"],
+              "properties": {
+                "name":         { "type": "string" },
+                "probability":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Sum of all outcomes should be 1.0" },
+                "next_stage":   { "type": ["string", "null"], "description": "Stage name to send entity to, or null for EXIT" },
+                "next_event":   { "type": ["string", "null"], "description": "Event type to trigger on the next stage" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "entity_arrivals": {
+      "type": "array",
+      "description": "Entity arrival streams",
+      "items": {
+        "type": "object",
+        "required": ["name", "count", "entry_stage"],
+        "properties": {
+          "name":          { "type": "string" },
+          "count":         { "type": "integer", "minimum": 1 },
+          "entry_stage":   { "type": "string", "description": "Name of the first stage entities enter" },
+          "inter_arrival": { "$ref": "#/definitions/distribution" },
+          "start_time":    { "type": "integer", "default": 0, "description": "Time when first entity arrives" },
+          "priority":      { "type": "integer", "default": 0, "description": "Event priority (lower = higher priority)" }
+        }
+      }
+    },
+    "statistics": {
+      "type": "object",
+      "description": "What to record during simulation",
+      "properties": {
+        "record_events":        { "type": "boolean", "default": true },
+        "record_entity_flow":   { "type": "boolean", "default": true },
+        "record_resource_util": { "type": "boolean", "default": false },
+        "output_dir":           { "type": "string", "default": "./output", "description": "Directory for CSV output files" }
+      }
+    }
+  },
+  "definitions": {
+    "distribution": {
+      "type": "object",
+      "description": "Probability distribution for time values",
+      "properties": {
+        "distribution": {
+          "type": "string",
+          "enum": ["fixed", "uniform", "exponential", "normal"],
+          "default": "fixed"
+        },
+        "param1": { "type": "number", "description": "Value (fixed), lower bound (uniform), lambda (exponential), mean (normal)" },
+        "param2": { "type": "number", "description": "Unused (fixed), upper bound (uniform), unused (exp), std dev (normal)" }
+      }
+    }
+  }
+}
