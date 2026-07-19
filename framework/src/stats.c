@@ -20,15 +20,22 @@ void DesStats_init(DesStatsCollector *stats) {
     stats->resource_records = (DesResourceRecord *)calloc((size_t)stats->resource_record_capacity,
                                                           sizeof(DesResourceRecord));
     stats->num_resource_records = 0;
+    stats->transition_record_capacity = 4096;
+    stats->transition_records = (DesTransitionRecord *)calloc(
+        (size_t)stats->transition_record_capacity, sizeof(DesTransitionRecord));
+    stats->num_transition_records = 0;
 }
 
 void DesStats_destroy(DesStatsCollector *stats) {
     free(stats->entity_records);
     free(stats->resource_records);
+    free(stats->transition_records);
     stats->entity_records = NULL;
     stats->resource_records = NULL;
+    stats->transition_records = NULL;
     stats->num_entity_records = 0;
     stats->num_resource_records = 0;
+    stats->num_transition_records = 0;
 }
 
 void DesStats_recordEvent(DesEngine *engine, const DesEvent *event) {
@@ -36,14 +43,183 @@ void DesStats_recordEvent(DesEngine *engine, const DesEvent *event) {
     (void)event;
 }
 
+void DesStats_recordTransition(DesEngine *engine,
+                               const DesTransitionRecord *record) {
+    if (!engine || !record) return;
+    DesStatsCollector *stats = &engine->stats;
+    if (stats->num_transition_records >= stats->transition_record_capacity) {
+        int new_capacity = stats->transition_record_capacity * 2;
+        DesTransitionRecord *records = (DesTransitionRecord *)realloc(
+            stats->transition_records,
+            (size_t)new_capacity * sizeof(DesTransitionRecord));
+        if (!records) {
+            engine->error = true;
+            engine->last_error = DES_ERR_OUT_OF_MEMORY;
+            return;
+        }
+        stats->transition_records = records;
+        stats->transition_record_capacity = new_capacity;
+    }
+    stats->transition_records[stats->num_transition_records++] = *record;
+}
+
+static void writeJsonString(FILE *file, const char *value) {
+    fputc('"', file);
+    for (const unsigned char *p = (const unsigned char *)value; p && *p; p++) {
+        switch (*p) {
+            case '"': fputs("\\\"", file); break;
+            case '\\': fputs("\\\\", file); break;
+            case '\b': fputs("\\b", file); break;
+            case '\f': fputs("\\f", file); break;
+            case '\n': fputs("\\n", file); break;
+            case '\r': fputs("\\r", file); break;
+            case '\t': fputs("\\t", file); break;
+            default:
+                if (*p < 0x20) fprintf(file, "\\u%04x", *p);
+                else fputc(*p, file);
+        }
+    }
+    fputc('"', file);
+}
+
+static const char *actionName(DesActionType action) {
+    switch (action) {
+        case DES_ACTION_NONE: return "none";
+        case DES_ACTION_ACQUIRE_AND_PROCESS: return "acquire_and_process";
+        case DES_ACTION_RELEASE_AND_DISPATCH: return "release_and_dispatch";
+        case DES_ACTION_RELEASE_AND_RETRY: return "release_and_retry";
+        case DES_ACTION_WAIT_RETRY: return "wait_retry";
+        case DES_ACTION_ENTITY_ENTER: return "entity_enter";
+        case DES_ACTION_ENTITY_EXIT: return "entity_exit";
+        case DES_ACTION_CUSTOM: return "custom";
+    }
+    return "none";
+}
+
+DesErrorCode DesStats_exportReplayJson(const DesEngine *engine,
+                                       const char *filepath) {
+    if (!engine || !filepath || filepath[0] == '\0') return DES_ERR_NULL_POINTER;
+    FILE *file = fopen(filepath, "wb");
+    if (!file) return DES_ERR_FILE_IO;
+    const DesSimConfig *cfg = engine->config;
+
+    fputs("{\n  \"replay_version\": 1,\n  \"scenario\": { \"name\": ", file);
+    writeJsonString(file, cfg->name);
+    fprintf(file, ", \"seed\": %u, \"end_time\": %d, \"events_processed\": %d, "
+                  "\"entities\": %d, \"completed\": %d },\n",
+            cfg->seed, engine->current_time, engine->events_processed,
+            engine->next_entity_id, engine->num_completed_entities);
+
+    fputs("  \"stages\": [\n", file);
+    for (int i = 0; i < cfg->num_stages; i++) {
+        const DesStageDef *stage = &cfg->stages[i];
+        fprintf(file, "    { \"id\": %d, \"name\": ", i);
+        writeJsonString(file, stage->name);
+        fprintf(file, ", \"initial_state\": %d, \"states\": [", stage->initial_state_index);
+        for (int j = 0; j < stage->num_states; j++) {
+            if (j) fputs(", ", file);
+            writeJsonString(file, stage->state_names[j]);
+        }
+        fputs("], \"events\": [", file);
+        for (int j = 0; j < stage->num_event_types; j++) {
+            if (j) fputs(", ", file);
+            writeJsonString(file, stage->event_type_names[j]);
+        }
+        fputs("], \"fsm\": [", file);
+        for (int j = 0; j < stage->num_transitions; j++) {
+            const DesFsmTransition *transition = &stage->transitions[j];
+            if (j) fputs(",", file);
+            fprintf(file, "{\"state\":%d,\"event\":%d,\"next_state\":%d,\"action\":",
+                    transition->state_index, transition->event_index,
+                    transition->next_state_index);
+            writeJsonString(file, actionName(transition->action_type));
+            fputc('}', file);
+        }
+        fputs("], \"outcomes\": [", file);
+        for (int j = 0; j < stage->num_outcomes; j++) {
+            const DesStageOutcome *outcome = &stage->outcomes[j];
+            if (j) fputs(",", file);
+            fputs("{\"name\":", file); writeJsonString(file, outcome->name);
+            fprintf(file, ",\"next_stage\":%d}", outcome->next_stage_id);
+        }
+        fprintf(file, "] }%s\n", i + 1 < cfg->num_stages ? "," : "");
+    }
+
+    fputs("  ],\n  \"resources\": [\n", file);
+    for (int i = 0; i < cfg->num_resources; i++) {
+        fprintf(file, "    { \"id\": %d, \"name\": ", i);
+        writeJsonString(file, cfg->resources[i].name);
+        fprintf(file, ", \"instances\": %d, \"available_at\": %d }%s\n",
+                cfg->resources[i].count, cfg->resources[i].available_at,
+                i + 1 < cfg->num_resources ? "," : "");
+    }
+
+    fputs("  ],\n  \"entities\": [\n", file);
+    for (int i = 0; i < engine->next_entity_id; i++) {
+        const DesEntity *entity = &engine->entities[i];
+        fprintf(file, "    { \"id\": %d, \"entry_time\": %d, \"completion_time\": %d }%s\n",
+                entity->id, entity->entry_time, entity->completion_time,
+                i + 1 < engine->next_entity_id ? "," : "");
+    }
+
+    fputs("  ],\n  \"visits\": [\n", file);
+    for (int i = 0; i < engine->stats.num_entity_records; i++) {
+        const DesEntityRecord *record = &engine->stats.entity_records[i];
+        fprintf(file, "    { \"entity\": %d, \"stage\": %d, \"enter\": %d, "
+                      "\"exit\": %d, \"outcome\": %d }%s\n",
+                record->entity_id, record->stage_id, record->enter_time,
+                record->exit_time, record->outcome_id,
+                i + 1 < engine->stats.num_entity_records ? "," : "");
+    }
+
+    fputs("  ],\n  \"resource_timeline\": [\n", file);
+    for (int i = 0; i < engine->stats.num_resource_records; i++) {
+        const DesResourceRecord *record = &engine->stats.resource_records[i];
+        fprintf(file, "    { \"time\": %d, \"resource\": %d, \"instance\": %d, "
+                      "\"busy\": %s, \"entity\": %d }%s\n",
+                record->time, record->resource_type_id, record->instance_id,
+                record->state ? "true" : "false", record->entity_id,
+                i + 1 < engine->stats.num_resource_records ? "," : "");
+    }
+
+    fputs("  ],\n  \"transitions\": [\n", file);
+    for (int i = 0; i < engine->stats.num_transition_records; i++) {
+        const DesTransitionRecord *record = &engine->stats.transition_records[i];
+        fprintf(file, "    { \"time\": %d, \"event_id\": %d, \"entity\": %d, "
+                      "\"stage\": %d, \"event\": %d, \"from_state\": %d, "
+                      "\"to_state\": %d, \"action\": ",
+                record->time, record->event_id, record->entity_id,
+                record->stage_id, record->event_type, record->from_state,
+                record->to_state);
+        writeJsonString(file, actionName(record->action_type));
+        fprintf(file, ", \"accepted\": %s, \"resource\": %d, "
+                      "\"instance\": %d, \"outcome\": %d }%s\n",
+                record->accepted ? "true" : "false",
+                record->resource_type_id, record->resource_instance_id,
+                record->outcome_id,
+                i + 1 < engine->stats.num_transition_records ? "," : "");
+    }
+    fputs("  ]\n}\n", file);
+
+    if (fclose(file) != 0) return DES_ERR_FILE_IO;
+    return DES_OK;
+}
+
 void DesStats_recordEntityTransition(DesEngine *engine, int entity_id,
                                      int stage_id, int enter_time, int exit_time,
                                      int outcome_id) {
     DesStatsCollector *stats = &engine->stats;
     if (stats->num_entity_records >= stats->entity_record_capacity) {
-        stats->entity_record_capacity *= 2;
-        stats->entity_records = (DesEntityRecord *)realloc(
-            stats->entity_records, (size_t)stats->entity_record_capacity * sizeof(DesEntityRecord));
+        int new_capacity = stats->entity_record_capacity * 2;
+        DesEntityRecord *records = (DesEntityRecord *)realloc(
+            stats->entity_records, (size_t)new_capacity * sizeof(DesEntityRecord));
+        if (!records) {
+            engine->error = true;
+            engine->last_error = DES_ERR_OUT_OF_MEMORY;
+            return;
+        }
+        stats->entity_records = records;
+        stats->entity_record_capacity = new_capacity;
     }
     DesEntityRecord *r = &stats->entity_records[stats->num_entity_records++];
     r->entity_id = entity_id;
@@ -58,9 +234,16 @@ void DesStats_recordResourceState(DesEngine *engine, int time,
                                   int state, int entity_id) {
     DesStatsCollector *stats = &engine->stats;
     if (stats->num_resource_records >= stats->resource_record_capacity) {
-        stats->resource_record_capacity *= 2;
-        stats->resource_records = (DesResourceRecord *)realloc(
-            stats->resource_records, (size_t)stats->resource_record_capacity * sizeof(DesResourceRecord));
+        int new_capacity = stats->resource_record_capacity * 2;
+        DesResourceRecord *records = (DesResourceRecord *)realloc(
+            stats->resource_records, (size_t)new_capacity * sizeof(DesResourceRecord));
+        if (!records) {
+            engine->error = true;
+            engine->last_error = DES_ERR_OUT_OF_MEMORY;
+            return;
+        }
+        stats->resource_records = records;
+        stats->resource_record_capacity = new_capacity;
     }
     DesResourceRecord *r = &stats->resource_records[stats->num_resource_records++];
     r->time = time;
@@ -144,7 +327,7 @@ void DesStats_generateReport(const DesEngine *engine) {
         printf("Max flow time:    %d\n", max_time);
     }
     printf("Simulation time:  %d\n", engine->current_time);
-    printf("Events processed: %d\n", engine->next_event_id);
+    printf("Events processed: %d\n", engine->events_processed);
     printf("============================\n\n");
 }
 
@@ -295,7 +478,7 @@ void DesStats_printSummary(const DesEngine *engine) {
     printf("  Entities:       %d created, %d completed, %d still active\n",
            total_entities, completed, engine->num_active_entities);
     printf("  Simulation:     %d time units, %d events processed\n",
-           engine->current_time, engine->next_event_id);
+           engine->current_time, engine->events_processed);
     if (completed > 0) {
         printf("  Flow time:      avg=%lld, min=%d, max=%d\n",
                total_flow / completed, min_flow, max_flow);

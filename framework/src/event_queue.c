@@ -3,6 +3,8 @@
 #include <string.h>
 
 void DesEventQueue_init(DesEventQueue *q, int capacity) {
+    if (!q) return;
+    if (capacity < 1) capacity = 16;
     q->buffer = (DesEvent *)calloc((size_t)capacity, sizeof(DesEvent));
     q->capacity = capacity;
     q->first = 0;
@@ -78,7 +80,15 @@ static void heapSiftDown(DesEvent *buf, int size, int idx) {
 }
 
 DesErrorCode DesEventQueue_enqueue(DesEventQueue *q, const DesEvent *event) {
-    if (q->size >= q->capacity) return DES_ERR_QUEUE_FULL;
+    if (!q || !event) return DES_ERR_NULL_POINTER;
+    if (q->size >= q->capacity) {
+        int new_capacity = q->capacity < 16 ? 16 : q->capacity * 2;
+        DesEvent *new_buffer = (DesEvent *)realloc(q->buffer,
+                                                   (size_t)new_capacity * sizeof(DesEvent));
+        if (!new_buffer) return DES_ERR_OUT_OF_MEMORY;
+        q->buffer = new_buffer;
+        q->capacity = new_capacity;
+    }
     q->buffer[q->size] = *event;
     heapSiftUp(q->buffer, q->size);
     q->size++;
@@ -86,6 +96,7 @@ DesErrorCode DesEventQueue_enqueue(DesEventQueue *q, const DesEvent *event) {
 }
 
 DesErrorCode DesEventQueue_dequeue(DesEventQueue *q, DesEvent *out) {
+    if (!q || !out) return DES_ERR_NULL_POINTER;
     if (q->size == 0) return DES_ERR_QUEUE_EMPTY;
     *out = q->buffer[0];
     q->size--;

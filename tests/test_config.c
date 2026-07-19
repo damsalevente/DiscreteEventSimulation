@@ -1,4 +1,4 @@
-#include "unity.h"
+#include "test.h"
 #include "des/des.h"
 #include <string.h>
 
@@ -20,7 +20,7 @@ void test_config_stack_init(void) {
     TEST_ASSERT_EQUAL_INT(0, cfg.num_resources);
     TEST_ASSERT_EQUAL_INT(0, cfg.num_stages);
     TEST_ASSERT_EQUAL_INT(0, cfg.num_arrivals);
-    TEST_ASSERT_EQUAL_INT(0, cfg.max_time);
+    TEST_ASSERT_EQUAL_INT(100000, cfg.max_time);
 }
 
 void test_config_add_resource(void) {
@@ -103,6 +103,7 @@ void test_config_add_outcome_string(void) {
     DesSimConfig *cfg = DesConfig_create();
     int s1 = DesConfig_addStage(cfg, "Stage1");
     int s2 = DesConfig_addStage(cfg, "Stage2");
+    DesStage_addEventType(cfg, s2, "ENTER");
     DesStage_addOutcome(cfg, s1, 0.7, "Stage2", "ENTER", "PASS");
     DesStage_addOutcome(cfg, s1, 0.3, NULL, NULL, "FAIL");
 

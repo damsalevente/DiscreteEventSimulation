@@ -1,154 +1,193 @@
-# DES Framework
+# FlowLab Discrete-Event Simulation
 
-A C11 library for discrete-event simulation with JSON-based configuration, FSM-driven stages, resource management, and rich CLI output.
+FlowLab is a C11 discrete-event simulation workbench for answering operational questions such as:
 
-## Build
+- What is the smallest capacity that meets a service target?
+- Which stage creates the most delay?
+- How many engineers, testers, benches, or vehicles are useful?
+- How do rework probabilities or resource availability change lead time?
 
-Requires CMake 3.14+ and a C11 compiler (MSVC, GCC, Clang).
+Scenarios describe entities moving through interlinked stages with resources, processing-time distributions, state transitions, and probabilistic outcomes. The native engine runs individual simulations, replicated experiments, and resource-capacity sweeps. A dependency-free browser workbench provides visual scenario editing and result comparison.
+
+## Quick start
+
+Requirements: CMake 3.14 or newer and a C11 compiler. Ninja is optional.
 
 ```bash
-# Configure
 cmake -S . -B build
-
-# Build (Release)
 cmake --build build --config Release
-
-# Run tests
-ctest --test-dir build/tests -C Release --output-on-failure
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-Tests are built by default (`BUILD_TESTS=ON`). To disable: `cmake -S . -B build -DBUILD_TESTS=OFF`.
+On single-configuration generators, executables are below `build/apps`. On Visual Studio they may be inside a `Release` subdirectory.
 
-## Running
+For CMake 3.21 or newer with Ninja, presets provide the same workflow:
 
 ```bash
-# Run a simulation from JSON config (prints rich summary report)
-./build/apps/coffeesim/Release/coffeesim.exe configs/coffee_shop.json
-
-# Run with any config
-./build/apps/config_runner/Release/config_runner.exe configs/airport_security.json
-
-# TUI config editor (interactive config builder)
-./build/apps/tui_editor/Release/tui_editor.exe configs/coffee_shop.json
-
-# Export to MDF4 format
-./build/apps/mdf_export/Release/mdf_export.exe configs/coffee_shop.json output/resources.mf4
+cmake --preset dev
+cmake --build --preset dev
+ctest --preset dev
 ```
 
-## Quick Start
+## Run experiments
 
-### 1. Write a JSON config (recommended)
+The `desim` application is the stable interface for people, scripts, and AI agents.
 
-Using the `"mode": "resource"` shorthand — just specify the resource, processing time, and outcomes:
+```bash
+# Validate a model and receive structured diagnostics
+./build/apps/desim/desim validate configs/whatif_release.json --json
+
+# Run one deterministic simulation
+./build/apps/desim/desim run configs/whatif_release.json --seed 42 --json
+
+# Export a deterministic replay for the browser workbench
+./build/apps/desim/desim run configs/coffee_shop.json \
+  --seed 42 --replay replay.json --json
+
+# Find the smallest capacity whose upper flow-time confidence bound meets the target
+./build/apps/desim/desim sweep configs/coffee_shop.json \
+  --resource Cashier=1:6 --runs 100 --seed 42 \
+  --objective 'mean-flow<=100' --json
+
+# Throughput objectives are supported as well
+./build/apps/desim/desim sweep configs/coffee_shop.json \
+  --resource Cashier=1:6 --runs 100 --seed 42 \
+  --objective 'throughput>=0.4' --json
+```
+
+Version-2 experiment results include completed count, completion rate, throughput, mean and p95 flow time, makespan, utilization, and 95% confidence intervals. A capacity qualifies only when the conservative confidence bound meets the objective.
+
+## Visual workbench
+
+Open [apps/workbench/index.html](apps/workbench/index.html) in a modern browser. It works directly from the filesystem and requires no package installation or web server.
+
+The workbench supports:
+
+- Importing and exporting scenario JSON
+- Adding, removing, and sizing resource pools
+- Editing simple stages or opt-in advanced visual FSMs
+- Connecting stages with probabilistic transitions and exits
+- Immediate structural validation
+- Replaying entity flow, FSM transitions, and per-instance resource timelines
+- Preparing objective-based capacity-sweep commands and comparing version-2 results
+
+The browser editor and native CLI use the same versioned JSON scenario contract. Native validation remains authoritative.
+
+## Scenario model
+
+The recommended stage mode is `"resource"`. It creates the standard `IDLE → BUSY → IDLE` lifecycle while still allowing probabilistic routing and rework loops.
 
 ```json
 {
-  "simulation": { "max_time": 100000, "seed": 42 },
+  "format_version": 1,
+  "simulation": {
+    "max_time": 100000,
+    "max_events": 100000,
+    "seed": 42
+  },
   "resources": [
-    { "name": "Server", "count": 3 }
+    { "name": "Test_Engineer", "count": 3, "available_at": 0 }
   ],
   "stages": [
     {
-      "name": "Process",
+      "name": "System_Test",
       "mode": "resource",
-      "resource": "Server",
-      "processing_time": { "distribution": "exponential", "param1": 0.05 },
+      "resource": "Test_Engineer",
+      "processing_time": {
+        "distribution": "uniform",
+        "param1": 20,
+        "param2": 40
+      },
       "outcomes": [
-        { "name": "FINISH", "probability": 1.0 }
+        { "name": "PASS", "probability": 0.85, "next_stage": null },
+        { "name": "REWORK", "probability": 0.15,
+          "next_stage": "System_Test", "next_event": "ENTER" }
       ]
     }
   ],
   "entity_arrivals": [
-    { "name": "Job", "count": 200, "entry_stage": "Process",
-      "inter_arrival": { "distribution": "exponential", "param1": 0.01 } }
+    {
+      "name": "Release",
+      "count": 50,
+      "entry_stage": "System_Test",
+      "inter_arrival": { "distribution": "fixed", "param1": 10 }
+    }
   ]
 }
 ```
 
-### 2. Or build configs programmatically (C API)
+Supported distributions in the current engine are `fixed`, `uniform`, `exponential`, and `normal`. The canonical schema is [configs/des_schema.json](configs/des_schema.json).
+
+### Manual FSM mode
+
+Advanced stages may define explicit states, events, and transitions. Each transition maps `(state, event)` to a next state and action:
+
+- `acquire_and_process`
+- `release_and_dispatch`
+- `release_and_retry`
+- `wait_retry`
+- `entity_enter`
+- `entity_exit`
+- `custom`
+- `none`
+
+The engine infers entry and completion event indices from the configured actions, so manual event ordering is supported.
+`initial_state` explicitly selects the starting state and defaults to the first state for existing scenarios. FSM state is entity-scoped; resource occupancy is tracked independently, so resource pools can be shared safely across stages.
+
+## C API
 
 ```c
 #include "des/des.h"
 
 DesSimConfig cfg = DesConfig_init();
+int team = DesConfig_addResource(&cfg, "Test_Engineer", 3);
+int stage = DesConfig_addStage(&cfg, "System_Test");
 
-int res = DesConfig_addResource(&cfg, "Server", 3);
-
-int stage = DesConfig_addStage(&cfg, "Process");
-DesStage_setResource(&cfg, stage, res);
-DesStage_setProcessingTime(&cfg, stage, DES_DIST_EXP(0.05));
-int finish = DesStage_addOutcome(&cfg, stage, 1.0, NULL, 0, "FINISH");
-DesStage_setResourceMode(&cfg, stage, res);
-
-DesConfig_addArrival(&cfg, "Job", 200, "Process", "ENTER", DES_DIST_EXP(0.01));
+DesStage_setResourceMode(&cfg, stage, team, DES_DIST_FIXED, 30, 0);
+DesStage_addOutcomeIdx(&cfg, stage, 1.0, DES_INVALID_ID, 0, "PASS");
+DesConfig_addArrivalIdx(&cfg, "Release", 50, stage, DES_DIST_FIXED, 10, 0);
 DesConfig_setSeed(&cfg, 42);
 
+DesValidationResult validation;
+if (!DesConfig_validate(&cfg, &validation)) {
+    return 1;
+}
+
 DesEngine *engine = DesEngine_create(&cfg);
-DesEngine_run(engine);
+DesErrorCode result = DesEngine_run(engine);
 DesStats_printSummary(engine);
-DesStats_generateReport(engine);
 DesEngine_destroy(engine);
 ```
 
-## Project Structure
+`DesConfig_init()` and `DesConfig_create()` now provide identical runnable defaults. `DesConfig_saveJson()` is the shared, validated, atomic JSON serializer.
 
-```
-├── framework/              Core DES library (static lib: des_framework)
-│   ├── include/des/        Public headers
-│   └── src/                Implementation
-├── apps/                   Executables
-│   ├── coffeesim/          Coffee shop demo runner
-│   ├── config_runner/      Generic JSON config runner
-│   ├── tui_editor/         TUI interactive config editor
-│   ├── release_pipeline/   Release pipeline demo runner
-│   └── mdf_export/         MDF4 file exporter
-├── configs/                Example JSON simulation configs
-├── tests/                  Unit tests (Unity framework)
-└── output/                 Generated CSV/MF4 output
+## Repository structure
+
+```text
+framework/             Native simulation library
+apps/desim/            Experiment and agent CLI
+apps/workbench/        Dependency-free visual workbench
+apps/config_runner/    Optional human-readable compatibility runner
+apps/mdf_export/       MDF4 resource-utilization export
+configs/               Example scenarios and JSON schema
+tests/                 Offline deterministic test suite
+docs/                  Architecture documentation
 ```
 
-## Architecture
+The old Windows Console TUI is retained only as deprecated source. It is not built by default. It can be enabled on Windows with `-DBUILD_LEGACY_TUI=ON`.
 
-See [docs/architecture.md](docs/architecture.md) for detailed software architecture documentation.
+## Build options
 
-## JSON Config Reference
+| Option | Default | Purpose |
+|---|---:|---|
+| `DES_BUILD_APPS` | `ON` | Build native applications |
+| `DES_BUILD_EXAMPLES` | `OFF` | Build legacy example runners |
+| `BUILD_TESTS` | `ON` | Build the offline test suite |
+| `DES_ENABLE_WARNINGS` | `ON` | Enable recommended compiler warnings |
+| `BUILD_LEGACY_TUI` | `OFF` | Build the deprecated Windows-only editor |
 
-| Section | Description |
-|---------|-------------|
-| `simulation` | `max_time`, `max_events`, `seed` |
-| `resources` | `name`, `count`, optional `available_at` |
-| `stages` | `name`, `resource`, `processing_time`, `outcomes[]` (+ optional `mode`, `states[]`, `event_types[]`, `fsm[]`) |
-| `entity_arrivals` | `name`, `count`, `entry_stage`, `inter_arrival`, optional `start_time`, `priority` |
-| `statistics` | `record_events`, `record_entity_flow`, `record_resource_util`, `output_dir` |
+The test suite has no downloaded dependencies and can run in offline or controlled build environments.
 
-### Stage Modes
+## Current scope
 
-- **`"mode": "resource"`** (recommended): Auto-generates IDLE/BUSY states, ENTER/COMPLETE events, and acquire/release FSM. Just specify `resource`, `processing_time`, and `outcomes`.
-- **`"mode": "manual"`** (default): Explicit `states[]`, `event_types[]`, `fsm[]` arrays.
-
-### FSM Transitions (manual mode)
-
-Each transition maps `(state, event) -> (next_state, action)`:
-
-| Action | Description |
-|--------|-------------|
-| `acquire_and_process` | Acquire a resource instance, run processing time, schedule completion |
-| `release_and_dispatch` | Release resource, pick outcome, dispatch to next stage or exit |
-| `release_and_retry` | Release resource and retry after delay |
-| `wait_retry` | Wait and retry without releasing |
-| `none` | No action |
-
-### Distributions
-
-| Type | Parameters |
-|------|-----------|
-| `fixed` | `param1` = value |
-| `uniform` | `param1` = min, `param2` = max |
-| `exponential` | `param1` = lambda |
-| `normal` | `param1` = mean, `param2` = stddev |
-
-### Error Handling
-
-- `DesConfig_getLastError(cfg)` — Builder error details after failed add operations
-- `DesConfig_getLoadError()` — JSON parse error details after failed loads
-- `DesError_toString(code)` — Human-readable error code strings
+This milestone supports resources, availability dates, queues, processing distributions, deterministic replay, probabilistic routing, rework loops, visual manual FSMs, structured service objectives, and capacity sweeps. Calendars, skills, dependency gates, imported empirical distributions, and automated multi-variable optimization remain planned extensions.

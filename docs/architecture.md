@@ -1,252 +1,130 @@
-# Software Architecture Document: DES Framework
+# FlowLab architecture
 
-## 1. Executive Summary
+## Purpose
 
-The DES Framework is a C11 library for discrete-event simulation. It provides a configurable simulation engine where entities (jobs, customers, vehicles) flow through stages (service points), each stage may acquire/release shared resources and dispatch entities to outcomes based on probabilistic branching. The framework supports JSON-driven configuration, deterministic seeding, and post-simulation statistics export.
+FlowLab separates editable scenarios, validated runtime models, simulation execution, experiments, and user interfaces. A scenario has one canonical meaning whether it is created in JSON, through the C builder API, or in the visual workbench.
 
-## 2. Architectural Overview
+```text
+Visual workbench ─┐
+JSON / AI agent ──┼─> DesSimConfig ─> validation ─> DesEngine
+C builder API ────┘                                  │
+                                                     ├─> event queue
+                                                     ├─> entities
+                                                     ├─> resources
+                                                     ├─> stage FSMs
+                                                     └─> statistics
 
-```
-                        ┌─────────────────────────────────────────┐
-                        │            Application Layer            │
-                        │  coffeesim | config_runner | tui_editor │
-                        └─────────────────┬───────────────────────┘
-                                          │
-                        ┌─────────────────┴───────────────────────┐
-                        │            Framework Layer              │
-                        │  ┌──────────┐ ┌──────────┐ ┌─────────┐ │
-                        │  │  Config   │ │  Engine  │ │  Stats  │ │
-                        │  │  Builder  │ │  (FSM)   │ │  & CSV  │ │
-                        │  └──────────┘ └──────────┘ └─────────┘ │
-                        │  ┌──────────┐ ┌──────────┐ ┌─────────┐ │
-                        │  │  Event   │ │ Resource │ │  Entity │ │
-                        │  │  Queue   │ │  Mgmt    │ │  Mgmt   │ │
-                        │  └──────────┘ └──────────┘ └─────────┘ │
-                        │  ┌──────────┐ ┌──────────┐             │
-                        │  │   RNG    │ │JSON Load │             │
-                        │  │(distrib.)│ │  (cJSON) │             │
-                        │  └──────────┘ └──────────┘             │
-                        └─────────────────────────────────────────┘
+desim experiment/sweep ─> independent engines ─> structured aggregate results
 ```
 
-## 3. Component Architecture
+## Layers
 
-### 3.1 Event Queue (`event_queue.c`)
+### Scenario model
 
-**Purpose:** Manages the lifecycle of simulation events using a min-heap priority queue.
+`DesSimConfig` is the editable data-transfer model. It contains resources, stages, arrivals, limits, seed, and recording settings. Collections have explicit compile-time limits so malformed or unexpectedly large inputs can be rejected before execution.
 
-**Data Structure:** Heap-allocated buffer with O(log n) enqueue/dequeue. Events are sorted by `(time, priority, id)`.
+There are two construction paths:
 
-**Key types:**
-- `DesEvent` — id, target_stage_id, event_type, entity_id, time, priority, data[4]
+- `DesConfig_loadJson*()` parses the versioned JSON format.
+- `DesConfig_*` and `DesStage_*` construct the same model programmatically.
 
-**API:**
-- `DesEventQueue_init/destroy/reset`
-- `DesEventQueue_enqueue/dequeue/peek`
-- `DesEventQueue_isEmpty/isFull/size`
+`DesConfig_init()` and `DesConfig_create()` use identical defaults. `DesConfig_saveJson()` validates first and writes through a temporary file so a failed save does not truncate the destination.
 
-**Note:** `DesEventQueue_sort()` is a no-op since the heap already maintains order. It remains in the API for backward compatibility but is called unnecessarily in `DesEngine_step()`.
+### Validation
 
-### 3.2 Simulation Engine (`engine.c`)
+`DesConfig_validate()` is the authority for semantic model validity. It checks:
 
-**Purpose:** Orchestrates the simulation lifecycle. Creates resources, stages, entities, and processes events through FSM dispatch.
+- Positive simulation limits and capacities
+- Unique resource and stage names
+- Resource and stage references
+- Distribution types and parameters
+- State, event, and FSM transition indices
+- Duplicate transition keys
+- Outcome probabilities and routing targets
+- Arrival stage references and entity capacity
 
-**Execution model:**
-1. `DesEngine_create()` — Allocate and initialize from `DesSimConfig`
-2. `DesEngine_run()` — Seed arrival events, then loop `DesEngine_step()` until empty/max_time
-3. `DesEngine_step()` — Dequeue next event, lookup FSM entry for `(current_state, event_type)`, dispatch action, update state
+The JSON loader rejects a model when parsing or validation fails. The engine also validates before allocating runtime state, protecting callers that build models directly in C.
 
-**FSM Dispatch:**
-Each stage has a 2D FSM table: `fsm[state * num_event_types + event_type]`. Each entry contains `(next_state, action_type, custom_action_id)`. The engine's `dispatchAction()` handles built-in action types:
-- `ACQUIRE_AND_PROCESS` — Acquire resource, schedule completion event after processing delay
-- `RELEASE_AND_DISPATCH` — Release resource, select outcome, dispatch to next stage or exit
-- `RELEASE_AND_RETRY` — Release and reschedule with delay
-- `WAIT_RETRY` — Reschedule without releasing
-- `NONE` — No action
+### Runtime engine
 
-**Resource contention:** When `acquire_and_process` fails (no available instances), the event is rescheduled with a calculated delay based on the earliest `available_at_time` of unassigned instances.
+`DesEngine` owns mutable runtime state. The source configuration remains borrowed and must outlive the engine.
 
-### 3.3 Configuration Builder (`config.c`, `des_config.h`)
+Runtime responsibilities are deliberately separated:
 
-**Purpose:** Two modes of configuration — JSON file loading and programmatic C API.
+- `event_queue.c` — dynamically growing min-heap ordered by time, priority, and event ID
+- `engine.c` — arrival seeding, event stepping, FSM dispatch, limits, and error propagation
+- `entity.c` — entity lifecycle, per-entity state, entry time, completion time, and stage visits
+- `resource.c` — resource instance acquisition, release, and scheduled availability
+- `rng.c` — deterministic samples and probabilistic outcome selection
+- `stats.c` — flow and resource records, console summaries, and CSV reports
+- `des_mdf.c` — MDF4 resource-utilization export
 
-**JSON Loading (`json_load.c`):**
-- Uses a vendored recursive-descent JSON parser (`json_parser.inc`)
-- Reads into `DesSimConfig` struct via `DesConfig_loadJson()` / `DesConfig_loadJsonString()`
-- Supports `"mode": "resource"` shorthand that auto-generates IDLE/BUSY states, ENTER/COMPLETE events, and acquire/release FSM
-- Supports `entity_capacity` field (auto-calculates from resources if omitted)
-- Proper boolean parsing via `safeBool()` (checks `cJSON_True`/`cJSON_False` type, not just key presence)
-- Error details via `DesConfig_getLoadError()` (returns static buffer with parse failure context)
+### FSM execution
 
-**Programmatic API:**
-Two parallel APIs:
+Each stage defines a transition table:
 
-1. **String-based** (recommended for readable code):
-   - `DesStage_addTransition(cfg, stage, "IDLE", "ENTER", "BUSY", action)`
-   - `DesStage_addOutcome(cfg, stage, 0.7, "NextStage", "ENTER", "PASS")`
-   - `DesConfig_addArrival(cfg, name, count, "EntryStage", "ENTER", dist, p1, p2)`
-
-2. **Index-based** (for performance or dynamic generation):
-   - `DesStage_addTransitionIdx(cfg, stage, from_state_idx, event_idx, to_state_idx, action)`
-   - `DesStage_addOutcomeIdx(cfg, stage, prob, next_stage_id, next_event_idx, name)`
-   - `DesConfig_addArrivalIdx(cfg, name, count, entry_stage_id, dist, p1, p2)`
-
-**Resource mode shorthand:**
-- `DesStage_setResourceMode(cfg, stage_id, resource_id)` — Auto-generates IDLE/BUSY states, ENTER/COMPLETE events, and the standard acquire/process/release FSM. Must be called after all primitive additions (states, events, transitions, outcomes) since it references them by index.
-
-**Stack allocation:** `DesConfig_init()` returns a zero-initialized `DesSimConfig` on the stack (no malloc). For heap allocation, use `DesConfig_create()`/`DesConfig_destroy()`.
-
-**Error reporting:**
-- `DesConfig_getLastError(cfg)` — Returns last builder error string (NULL if no error)
-- `DesConfig_getLoadError()` — Returns static buffer with JSON parse/load error details
-- `DesError_toString(code)` — Maps `DesErrorCode` enum to human-readable string
-
-**Convenience macros:**
-- `DesConfig_init()` — Zero-initialize a `DesSimConfig`
-- `DES_DIST_FIX(v, out)` — Fixed distribution
-- `DES_DIST_EXP(lam, out)` — Exponential distribution
-- `DES_DIST_UNI(a, b, out)` — Uniform distribution
-- `DES_DIST_NORM(m, s, out)` — Normal distribution
-- Legacy aliases: `DES_DIST_FMT`, `DES_DIST_NRM` (same signatures)
-
-### 3.4 Resource Management (`resource.c`)
-
-**Purpose:** Manages resource instances with availability tracking and time-based delays.
-
-**Model:**
-- Each resource type has N instances
-- Each instance tracks: assigned entity, assigned stage, current state, available_at_time
-- `available_at_time` supports resources that become available at a specific simulation time (e.g., a vehicle arriving later)
-
-**API:**
-- `DesResource_acquire()` — Returns instance_id or -1 if none available
-- `DesResource_release()` — Marks instance as unassigned
-- `DesResource_getAvailable()` — Returns count of available instances
-
-### 3.5 Entity Management (`entity.c`)
-
-**Purpose:** Tracks entity lifecycle through the simulation.
-
-**Entity states:**
-- `active = true` — Currently in the system
-- `active = false, completion_time > 0` — Successfully completed
-- `current_stage_id = DES_INVALID_ID` — Exited the system
-
-**Tracking:**
-- `entry_time` — When the entity first entered the system
-- `stage_entry_time` — When the entity entered the current stage
-- `num_stage_visits` — Total stages visited (for pipeline analysis)
-- `outcome_id` — Final outcome (-1 if still active)
-
-### 3.6 Random Number Generation (`rng.c`)
-
-**Purpose:** Deterministic RNG using a Linear Congruential Generator (LCG).
-
-**Formula:** `state = state * 1103515245 + 12345`
-
-**Distributions:**
-- `DES_DIST_FIXED` — Constant value
-- `DES_DIST_UNIFORM` — Integer uniform [min, max]
-- `DES_DIST_EXPONENTIAL` — `floor(-log(1-u) / lambda)` where u is uniform (0,1)
-- `DES_DIST_NORMAL` — Box-Muller transform
-
-**Outcome selection:** Cumulative probability distribution with deterministic roll.
-
-### 3.7 Statistics & Reporting (`stats.c`)
-
-**Purpose:** Records entity flow transitions and resource state changes. Produces rich console output and optional CSV export.
-
-**Recorded data:**
-- `DesEntityRecord` — entity_id, stage_id, enter_time, exit_time, outcome_id
-- `DesResourceRecord` — time, resource_type_id, instance_id, state, entity_id
-
-**Console output (`DesStats_printSummary()`):**
-- Per-stage breakdown: entity counts, avg/min/max time, throughput, resource utilization
-- Per-resource utilization: available/busy/queue percentages
-- Per-outcome distribution: percentage of entities at each exit point
-- Pipeline diagram: visual flow with avg time per stage
-- Flow time histogram (8 buckets)
-- Entity arrival/departure timeline
-
-**Console config summary (`DesStats_printConfigSummary()`):**
-- Resources, stages, FSM transitions, outcomes, arrival streams
-
-**CSV export:**
-- `entity_flow.csv` — Per-entity stage transit times
-- `resource_util.csv` — Resource state changes over time
-
-### 3.8 MDF4 Export (`des_mdf.c`)
-
-**Purpose:** Exports resource utilization data to ASAM MDF4.10 format for analysis in tools like CANape or MDF validators.
-
-## 4. Data Flow
-
-```
-JSON Config File
-      │
-      ▼
-DesConfig_loadJson() ──► DesSimConfig struct
-      │
-      ▼
-DesEngine_create() ──► DesEngine (runtime state)
-      │
-      ├──► seedEntities() ──► arrival events in queue
-      │
-      ▼
-DesEngine_run() loop:
-      │
-      ├──► DesEngine_step()
-      │      │
-      │      ├──► DesEventQueue_dequeue()
-      │      │
-      │      ├──► FSM lookup: stages[stage_id].fsm[state * event_types + event_type]
-      │      │
-      │      ├──► dispatchAction()
-      │      │      ├── acquire/release resources
-      │      │      ├── schedule new events
-      │      │      └── record stats
-      │      │
-      │      └──► update FSM state
-      │
-      └──► DesStats_generateReport() ──► CSV files
+```text
+(current state, event type) -> (next state, action)
 ```
 
-## 5. Key Design Decisions
+FSM state is associated with the entity and reset to the destination stage's explicit initial state when routing. Resource occupancy is recorded separately. This allows concurrent entities and lets multiple stages share a resource pool without interpreting one another's state indices.
 
-### 5.1 Fixed-Size Arrays
-All collections use fixed-size arrays with compile-time limits (`DES_MAX_*`). This ensures deterministic memory usage and avoids allocation failures during simulation. Limits are generous (100k events, 10k entities, 64 resources/stages) but can be adjusted in `des_types.h`.
+The engine infers a stage's entry event from an acquire/enter transition and its completion event from a release-and-dispatch transition. Manual FSMs therefore do not depend on event names or fixed event indices.
 
-### 5.2 Deterministic Simulation
-The LCG-based RNG with explicit seeding ensures reproducible results. Two simulations with the same seed produce identical event sequences and statistics.
+When a resource is unavailable, the entry event remains in its original state and is rescheduled. A resource with a future `available_at` time is retried directly at that time when possible, avoiding long polling sequences.
 
-### 5.3 FSM-Driven Processing
-Each stage is a finite state machine with states (IDLE, BUSY, custom), event types (ENTER, DONE, custom), and actions. This allows modeling complex workflows beyond simple acquire-process-release.
+### Entity timing
 
-### 5.4 JSON as Primary Config Format
-JSON provides human-readable, tool-editable configuration. The C API exists for programmatic use and testing, but JSON is the recommended approach for production configs.
+Arrival streams seed lightweight arrival events, not entities. The entity is created when its arrival event is processed. Consequently, `entry_time` is the real system-arrival time and flow time does not include time before arrival.
 
-### 5.5 Separation of Config and Engine
-`DesSimConfig` is immutable after construction. `DesEngine` owns all mutable runtime state. This separation allows running the same config multiple times with different seeds.
+### Limits and lifecycle
 
-## 6. Limitations & Known Issues
+- `max_time` is inclusive: events after the configured horizon remain unprocessed.
+- `max_events` limits processed events, not queue capacity.
+- Internal scheduling errors propagate through `last_error` and stop execution.
+- Calling `DesEngine_run()` a second time continues the same engine and never seeds duplicate entities.
+- Independent replications create independent engines and use explicit seeds.
 
-1. **No dynamic resizing** — Fixed arrays mean configs exceeding `DES_MAX_*` limits cannot be loaded. The limits are compile-time constants.
-2. **Single-threaded** — The engine is single-threaded. Parallel simulation would require partitioning the event queue.
-3. **Vendored JSON parser** — `json_parser.inc` is a static include that cannot be tested independently.
-4. **Platform-specific TUI** — TUI apps use the Windows Console API directly and are not portable to non-Windows platforms without modification.
-5. **Resource time-based availability** — `available_at_time` is per-instance and checked during acquire, but released instances don't reset this field.
-6. **Pre-existing test path issues** — `test_airport` and `test_whatif` JSON file-loading subtests fail when run from `build/tests/` due to relative path to `configs/`.
+## Experiment interface
 
-## 7. Extension Points
+`apps/desim` is the stable automation boundary:
 
-### 7.1 Custom Actions
-Register custom action handlers via `DesEngine_registerAction()`. These are stored in the engine's `custom_actions` array but are not currently dispatched by the built-in FSM (the engine handles all built-in actions inline). To use custom actions, modify `dispatchAction()` in `engine.c`.
+- `validate` emits model diagnostics.
+- `run` executes one deterministic replication.
+- `experiment` aggregates completed count, completion rate, throughput, flow time, makespan, and utilization across independent runs.
+- `sweep` varies one resource capacity and recommends the smallest capacity whose confidence bound satisfies `throughput>=...` or `mean-flow<=...`.
+- `run --replay FILE` exports deterministic stage visits, FSM transitions, and resource assignments for visual playback.
 
-### 7.2 New Distributions
-Add new `DesDistType` values in `des_types.h` and implement sampling in `DesRng_sample()`.
+Experiment JSON uses `result_version: 2`; replay JSON uses `replay_version: 1`. Both are suitable for agents and the browser workbench. Exit codes distinguish usage, model-loading, and simulation failures.
 
-### 7.3 New Output Formats
-The stats collector stores raw records that can be exported to any format. See `des_mdf.c` for an example of a non-CSV exporter.
+## Visual workbench
 
-### 7.4 New App Types
-Link against `des_framework` and use the `DesConfig`/`DesEngine`/`DesStats` APIs. See `apps/coffeesim/` for the minimal example.
+`apps/workbench` is a dependency-free HTML, CSS, and JavaScript application. It edits simple and advanced FSM stages, renders actual outcome routes, safely removes resource pools, prepares native commands, replays native traces, and visualizes structured sweep results.
+
+The workbench deliberately does not contain a second simulation engine. Native execution remains authoritative until a local service or WebAssembly bridge can call the same engine directly.
+
+## Performance model
+
+- Event scheduling: `O(log n)` through the min-heap
+- Model lookup: validated numeric IDs during execution
+- Runtime allocation: performed during engine creation or controlled collector/queue growth
+- Replications: independent and suitable for process-level parallelism
+
+The engine avoids JSON parsing and string lookup inside the event loop. Statistics tracing can be disabled when maximum throughput is required.
+
+## Extension roadmap
+
+The next model-level extensions should preserve the canonical validation boundary:
+
+1. Resource calendars and shifts
+2. Skills and eligibility constraints
+3. Dependency gates and synchronization
+4. Empirical and additional probability distributions
+5. Batch and preemption policies
+6. Parallel replication executor
+7. Multi-variable search and optimization
+8. A local service or WebAssembly bridge for one-click browser execution
+
+## Deprecated surface
+
+`apps/tui_editor` directly edits internal structures and contains a separate lossy JSON writer. It is Windows-only and excluded from default builds. It remains temporarily for reference behind `BUILD_LEGACY_TUI` and should not receive new features.

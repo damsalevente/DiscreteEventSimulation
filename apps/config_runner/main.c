@@ -14,6 +14,11 @@ int main(int argc, char *argv[]) {
     }
 
     DesEngine *engine = DesEngine_create(cfg);
+    if (!engine) {
+        fprintf(stderr, "Cannot create simulation engine\n");
+        DesConfig_destroy(cfg);
+        return 2;
+    }
 
     DesStats_printConfigSummary(engine);
 
@@ -21,6 +26,9 @@ int main(int argc, char *argv[]) {
     DesErrorCode ec = DesEngine_run(engine);
     if (ec != DES_OK) {
         fprintf(stderr, "\nSimulation error: %s\n", DesError_toString(ec));
+        DesEngine_destroy(engine);
+        DesConfig_destroy(cfg);
+        return 3;
     }
 
     DesStats_printSummary(engine);

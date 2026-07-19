@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Design, replay, and compare discrete-event simulation scenarios.">
+  <title>FlowLab — Simulation Workbench</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand" aria-label="FlowLab home">
+      <span class="brand-mark" aria-hidden="true">F</span>
+      <span><strong>FlowLab</strong><small>Simulation workbench</small></span>
+    </div>
+    <nav class="view-tabs" aria-label="Workbench views">
+      <button class="tab active" data-view="model">Model</button>
+      <button class="tab" data-view="replay">Replay</button>
+      <button class="tab" data-view="experiment">Experiment</button>
+      <button class="tab" data-view="results">Results</button>
+    </nav>
+    <div class="header-actions">
+      <label class="button quiet" for="import-file">Import JSON</label>
+      <input id="import-file" type="file" accept="application/json,.json" hidden>
+      <button id="export-button" class="button primary">Export scenario</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="model-view" class="view active" aria-labelledby="model-heading">
+      <aside class="rail">
+        <div class="rail-heading">
+          <div><span class="eyebrow">Scenario</span><h1 id="model-heading">Release pipeline</h1></div>
+          <span id="validation-pill" class="status valid">Valid</span>
+        </div>
+        <label class="field"><span>Name</span><input id="scenario-name" value="Release pipeline"></label>
+        <div class="section-heading"><h2>Resources</h2><button id="add-resource" class="icon-button" aria-label="Add resource">+</button></div>
+        <div id="resource-list" class="resource-list"></div>
+        <div class="section-heading"><h2>Arrival streams</h2></div>
+        <div id="arrival-list" class="arrival-list"></div>
+      </aside>
+
+      <section class="canvas-panel">
+        <div class="canvas-toolbar">
+          <div><span class="eyebrow">Process map</span><h2>How work moves</h2></div>
+          <div class="toolbar-actions">
+            <button id="add-stage" class="button quiet">+ Add stage</button>
+            <button id="fit-flow" class="button quiet">Fit flow</button>
+          </div>
+        </div>
+        <div id="validation-banner" class="validation-banner" hidden></div>
+        <div id="process-canvas" class="process-canvas" tabindex="0" aria-label="Process stages"></div>
+        <div class="canvas-legend">
+          <span><i class="legend-dot processing"></i> Processing stage</span>
+          <span><i class="legend-dot exit"></i> System exit</span>
+          <span>Select a stage to configure it</span>
+        </div>
+      </section>
+
+      <aside class="inspector">
+        <div class="inspector-heading"><span class="eyebrow">Selected stage</span><h2 id="stage-title">HIL Testing</h2></div>
+        <div id="stage-form"></div>
+      </aside>
+    </section>
+
+    <section id="replay-view" class="view replay-layout" aria-labelledby="replay-heading">
+      <div class="replay-header">
+        <div><span class="eyebrow">Deterministic replay</span><h1 id="replay-heading">See work move through the system</h1></div>
+        <label class="button quiet" for="replay-file">Import replay JSON</label>
+        <input id="replay-file" type="file" accept="application/json,.json" hidden>
+      </div>
+      <article id="replay-empty" class="panel replay-empty">
+        <h2>Generate a replay with the native engine</h2>
+        <p>Export the current scenario, run this deterministic command, then import the generated replay file.</p>
+        <pre id="replay-command"></pre>
+        <button id="copy-replay-command" class="button primary">Copy replay command</button>
+      </article>
+      <div id="replay-workspace" class="replay-workspace" hidden>
+        <div class="panel replay-controls">
+          <button id="replay-prev" class="icon-button" aria-label="Previous event">◀</button>
+          <button id="replay-play" class="button primary">Play</button>
+          <button id="replay-next" class="icon-button" aria-label="Next event">▶</button>
+          <label class="replay-time"><span id="replay-time-label">t = 0</span><input id="replay-scrubber" type="range" min="0" max="1" value="0" step="any"></label>
+          <label class="compact-field"><span>Speed</span><select id="replay-speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="4">4×</option></select></label>
+          <label class="compact-field"><span>Resource</span><select id="replay-resource-filter"><option value="">All</option></select></label>
+          <label class="compact-field"><span>Entity</span><input id="replay-entity-filter" type="number" min="0" placeholder="All"></label>
+        </div>
+        <div class="replay-grid">
+          <article class="panel replay-flow-panel">
+            <div class="chart-heading"><div><h2>Live process flow</h2><p id="replay-summary">Select an entity or scrub through time.</p></div></div>
+            <div id="replay-flow-map" class="replay-flow-map"></div>
+          </article>
+          <article class="panel replay-fsm-panel">
+            <div class="chart-heading"><div><h2>Active state machine</h2><p>Click a stage to inspect it.</p></div></div>
+            <div id="replay-fsm" class="replay-fsm"></div>
+          </article>
+        </div>
+        <article class="panel timeline-panel">
+          <div class="chart-heading"><div><h2>Resource timeline</h2><p>Unavailable, idle, and busy intervals for every instance.</p></div><div class="timeline-legend"><span class="unavailable-key">Unavailable</span><span class="idle-key">Idle</span><span class="busy-key">Busy</span></div></div>
+          <div id="resource-timeline" class="resource-timeline"></div>
+        </article>
+        <article class="panel event-panel"><h2>Events at the current time</h2><div id="replay-event-log" class="replay-event-log"></div></article>
+      </div>
+    </section>
+
+    <section id="experiment-view" class="view experiment-layout" aria-labelledby="experiment-heading">
+      <div class="experiment-intro">
+        <span class="eyebrow">Experiment design</span>
+        <h1 id="experiment-heading">Ask a measurable question</h1>
+        <p>Run independent replications and compare staffing or availability choices against the same baseline.</p>
+      </div>
+      <div class="experiment-grid">
+        <article class="panel experiment-card">
+          <span class="step-number">01</span><h2>Replication settings</h2>
+          <label class="field"><span>Independent runs</span><input id="runs" type="number" min="1" max="100000" value="30"></label>
+          <label class="field"><span>Starting seed</span><input id="seed" type="number" min="1" value="42"></label>
+          <label class="field"><span>Service objective</span><select id="objective-metric"><option value="mean-flow">Maximum mean flow time</option><option value="throughput">Minimum throughput</option></select></label>
+          <label class="field"><span>Target value</span><input id="objective-target" type="number" min="0" step="any" value="40"></label>
+        </article>
+        <article class="panel experiment-card">
+          <span class="step-number">02</span><h2>Capacity sweep</h2>
+          <label class="field"><span>Resource</span><select id="sweep-resource"></select></label>
+          <div class="field-pair">
+            <label class="field"><span>From</span><input id="sweep-min" type="number" min="1" value="1"></label>
+            <label class="field"><span>To</span><input id="sweep-max" type="number" min="1" value="5"></label>
+          </div>
+        </article>
+        <article class="panel experiment-card command-card">
+          <span class="step-number">03</span><h2>Run with the native engine</h2>
+          <p>The command is deterministic and returns agent-readable JSON.</p>
+          <pre id="command-preview"></pre>
+          <button id="copy-command" class="button primary wide">Copy experiment command</button>
+        </article>
+      </div>
+    </section>
+
+    <section id="results-view" class="view results-layout" aria-labelledby="results-heading">
+      <div class="results-header">
+        <div><span class="eyebrow">Experiment results</span><h1 id="results-heading">Capacity comparison</h1></div>
+        <label class="button quiet" for="results-file">Import results JSON</label>
+        <input id="results-file" type="file" accept="application/json,.json" hidden>
+      </div>
+      <div class="metric-row">
+        <article class="metric"><span>Objective result</span><strong id="objective-result">—</strong><small id="objective-confidence">95% interval unavailable</small></article>
+        <article class="metric"><span>Recommended capacity</span><strong id="best-capacity">—</strong><small id="best-resource">resource instances</small></article>
+        <article class="metric"><span>Resource utilization</span><strong id="result-utilization">—</strong><small>at recommended capacity</small></article>
+        <article class="metric"><span>P95 flow time</span><strong id="result-p95">—</strong><small>at recommended capacity</small></article>
+      </div>
+      <article class="panel chart-panel">
+        <div class="chart-heading"><div><h2 id="results-chart-title">Capacity objective</h2><p id="results-chart-description">Intervals show replication uncertainty.</p></div></div>
+        <div id="results-chart" class="results-chart"><p class="empty-state">Import JSON produced by <code>desim sweep</code> to compare alternatives.</p></div>
+      </article>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-#include "unity.h"
+#include "test.h"
 #include "des/des.h"
 #include <string.h>
 
@@ -50,10 +50,10 @@ void test_engine_step(void) {
     makeSimpleConfig(&cfg);
     DesEngine *engine = DesEngine_create(&cfg);
 
-    DesErrorCode ec = DesEngine_run(engine);
+    DesErrorCode ec = DesEngine_step(engine);
     TEST_ASSERT_EQUAL_INT(DES_OK, ec);
-    TEST_ASSERT_EQUAL_INT(10, engine->num_completed_entities);
-    TEST_ASSERT_EQUAL_INT(0, engine->num_active_entities);
+    TEST_ASSERT_EQUAL_INT(1, engine->events_processed);
+    TEST_ASSERT_EQUAL_INT(1, engine->num_active_entities);
 
     DesEngine_destroy(engine);
 }

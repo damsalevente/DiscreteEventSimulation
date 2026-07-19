@@ -1,4 +1,4 @@
-#include "unity.h"
+#include "test.h"
 #include "des/des.h"
 
 void setUp(void) {}
@@ -44,8 +44,9 @@ void test_queue_full(void) {
     ev.id = 1;
     TEST_ASSERT_EQUAL_INT(DES_OK, DesEventQueue_enqueue(&q, &ev));
     TEST_ASSERT_EQUAL_INT(DES_OK, DesEventQueue_enqueue(&q, &ev));
-    TEST_ASSERT_TRUE(DesEventQueue_isFull(&q));
-    TEST_ASSERT_EQUAL_INT(DES_ERR_QUEUE_FULL, DesEventQueue_enqueue(&q, &ev));
+    TEST_ASSERT_EQUAL_INT(DES_OK, DesEventQueue_enqueue(&q, &ev));
+    TEST_ASSERT_EQUAL_INT(3, DesEventQueue_size(&q));
+    TEST_ASSERT_TRUE(q.capacity >= 3);
 
     DesEventQueue_destroy(&q);
 }

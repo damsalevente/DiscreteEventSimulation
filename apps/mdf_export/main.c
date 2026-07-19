@@ -29,16 +29,27 @@ int main(int argc, char *argv[]) {
     printf("Total resource instances (one MDF channel each): %d\n", total_inst);
 
     DesEngine *engine = DesEngine_create(cfg);
+    if (!engine) {
+        fprintf(stderr, "Cannot create engine: invalid configuration or out of memory\n");
+        DesConfig_destroy(cfg);
+        return 2;
+    }
     printf("Running simulation...\n");
     DesErrorCode ec = DesEngine_run(engine);
     if (ec != DES_OK) {
         fprintf(stderr, "Simulation error: %d\n", ec);
+        DesEngine_destroy(engine);
+        DesConfig_destroy(cfg);
+        return 3;
     }
 
     printf("Writing MDF4 export: %s\n", out_path);
     DesErrorCode mec = DesMdf_exportResources(engine, out_path);
     if (mec != DES_OK) {
         fprintf(stderr, "MDF export failed: %d\n", mec);
+        DesEngine_destroy(engine);
+        DesConfig_destroy(cfg);
+        return 4;
     }
 
     DesStats_generateReport(engine);

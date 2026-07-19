@@ -9,6 +9,7 @@ int DesEntity_create(DesEngine *engine, int entry_stage_id) {
     memset(e, 0, sizeof(DesEntity));
     e->id = id;
     e->current_stage_id = entry_stage_id;
+    e->current_state = engine->stages[entry_stage_id].initial_state;
     e->entry_time = engine->current_time;
     e->stage_entry_time = engine->current_time;
     e->completion_time = -1;
@@ -24,6 +25,7 @@ void DesEntity_enterStage(DesEngine *engine, int entity_id, int stage_id) {
     if (entity_id < 0 || entity_id >= engine->next_entity_id) return;
     DesEntity *e = &engine->entities[entity_id];
     e->current_stage_id = stage_id;
+    e->current_state = engine->stages[stage_id].initial_state;
     e->stage_entry_time = engine->current_time;
     e->num_stage_visits++;
 }

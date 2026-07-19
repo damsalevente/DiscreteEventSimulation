@@ -73,6 +73,7 @@ typedef struct {
 typedef struct {
     char  name[DES_MAX_NAME];
     int   resource_type_id;
+    int   initial_state_index;
     int   num_states;
     char  state_names[DES_MAX_STATES][DES_MAX_NAME];
     int   num_event_types;
@@ -106,7 +107,16 @@ typedef struct {
     char  output_dir[256];
 } DesStatsConfig;
 
+#define DES_MAX_VALIDATION_ERRORS 32
+#define DES_MAX_ERROR_MESSAGE     256
+
 typedef struct {
+    int  num_errors;
+    char errors[DES_MAX_VALIDATION_ERRORS][DES_MAX_ERROR_MESSAGE];
+} DesValidationResult;
+
+typedef struct {
+    char            name[DES_MAX_NAME];
     int             num_resources;
     DesResourceDef  resources[DES_MAX_RESOURCES];
     int             num_stages;
@@ -134,6 +144,7 @@ typedef struct {
 typedef struct {
     int   id;
     int   current_stage_id;
+    int   current_state;
     int   entry_time;
     int   stage_entry_time;
     int   completion_time;
@@ -156,12 +167,14 @@ typedef struct {
     int          next_state;
     DesActionType action_type;
     int          custom_action_id;
+    bool         defined;
 } DesFsmEntry;
 
 typedef struct {
     int           id;
     char          name[DES_MAX_NAME];
     int           resource_type_id;
+    int           initial_state;
     int           num_states;
     int           num_event_types;
     DesFsmEntry  *fsm;
@@ -169,6 +182,8 @@ typedef struct {
     int              num_outcomes;
     DesStageOutcome  outcomes[DES_MAX_OUTCOMES];
     int           current_state;
+    int           entry_event_type;
+    int           completion_event_type;
 } DesStage;
 
 typedef struct {
@@ -205,12 +220,30 @@ typedef struct {
 } DesResourceRecord;
 
 typedef struct {
+    int           time;
+    int           event_id;
+    int           entity_id;
+    int           stage_id;
+    int           event_type;
+    int           from_state;
+    int           to_state;
+    DesActionType action_type;
+    int           resource_type_id;
+    int           resource_instance_id;
+    int           outcome_id;
+    bool          accepted;
+} DesTransitionRecord;
+
+typedef struct {
     DesEntityRecord   *entity_records;
     int                num_entity_records;
     int                entity_record_capacity;
     DesResourceRecord *resource_records;
     int                num_resource_records;
     int                resource_record_capacity;
+    DesTransitionRecord *transition_records;
+    int                  num_transition_records;
+    int                  transition_record_capacity;
 } DesStatsCollector;
 
 typedef struct {

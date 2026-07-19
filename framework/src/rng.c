@@ -2,11 +2,9 @@
 #include "des/des_rng.h"
 #include "des/des_engine.h"
 #include <math.h>
-#include <stdlib.h>
 
 void DesRng_setSeed(DesEngine *engine, unsigned int seed) {
     engine->rng_state = seed;
-    srand(seed);
 }
 
 static unsigned int rngNext(DesEngine *engine) {

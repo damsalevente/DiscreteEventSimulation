@@ -4,9 +4,12 @@
 #include "des_types.h"
 
 DesSimConfig *DesConfig_create(void);
+DesSimConfig  DesConfig_initValue(void);
 void          DesConfig_destroy(DesSimConfig *cfg);
 
 const char   *DesConfig_getLastError(const DesSimConfig *cfg);
+bool          DesConfig_validate(const DesSimConfig *cfg, DesValidationResult *result);
+DesErrorCode  DesConfig_saveJson(const DesSimConfig *cfg, const char *filepath);
 
 /* --- Builder API --- */
 
@@ -16,6 +19,7 @@ int  DesConfig_addStage(DesSimConfig *cfg, const char *name);
 void DesStage_setResource(DesSimConfig *cfg, int stage_id, int resource_type_id);
 void DesStage_setProcessingTime(DesSimConfig *cfg, int stage_id,
                                 DesDistType dist, double p1, double p2);
+void DesStage_setInitialState(DesSimConfig *cfg, int stage_id, int state_id);
 
 int  DesStage_addState(DesSimConfig *cfg, int stage_id, const char *state_name);
 int  DesStage_addEventType(DesSimConfig *cfg, int stage_id, const char *event_name);
@@ -50,6 +54,7 @@ void DesConfig_setMaxTime(DesSimConfig *cfg, int max_time);
 void DesConfig_setMaxEvents(DesSimConfig *cfg, int max_events);
 void DesConfig_setEntityCapacity(DesSimConfig *cfg, int capacity);
 void DesConfig_setSeed(DesSimConfig *cfg, unsigned int seed);
+void DesConfig_setName(DesSimConfig *cfg, const char *name);
 void DesConfig_setStats(DesSimConfig *cfg, bool record_events,
                         bool record_entity_flow, bool record_resource_util,
                         const char *output_dir);
@@ -68,7 +73,7 @@ int  DesConfig_removeArrival(DesSimConfig *cfg, int arrival_id);
 
 /* --- Convenience macros --- */
 
-#define DesConfig_init()  (DesSimConfig){0}
+#define DesConfig_init()  DesConfig_initValue()
 
 #define DES_DIST_FIX(v, d)      do { (d).type = DES_DIST_FIXED;      (d).param1 = (v); (d).param2 = 0; } while(0)
 #define DES_DIST_UNI(a, b, d)   do { (d).type = DES_DIST_UNIFORM;    (d).param1 = (a); (d).param2 = (b); } while(0)

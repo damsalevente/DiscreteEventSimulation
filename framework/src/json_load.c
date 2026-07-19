@@ -71,7 +71,7 @@ static int parseDistribution(const cJSON *obj, DesDistribution *dist) {
     else if (strcmp(type, "uniform") == 0) dist->type = DES_DIST_UNIFORM;
     else if (strcmp(type, "exponential") == 0) dist->type = DES_DIST_EXPONENTIAL;
     else if (strcmp(type, "normal") == 0) dist->type = DES_DIST_NORMAL;
-    else dist->type = DES_DIST_FIXED;
+    else dist->type = (DesDistType)-1;
     dist->param1 = safeNumber(cJSON_GetObjectItem(obj, "param1"), 1.0);
     dist->param2 = safeNumber(cJSON_GetObjectItem(obj, "param2"), 0.0);
     return 0;
@@ -85,8 +85,9 @@ static int parseActionType(const char *action) {
     if (strcmp(action, "wait_retry") == 0) return DES_ACTION_WAIT_RETRY;
     if (strcmp(action, "entity_enter") == 0) return DES_ACTION_ENTITY_ENTER;
     if (strcmp(action, "entity_exit") == 0) return DES_ACTION_ENTITY_EXIT;
+    if (strcmp(action, "custom") == 0) return DES_ACTION_CUSTOM;
     if (strcmp(action, "none") == 0) return DES_ACTION_NONE;
-    return DES_ACTION_NONE;
+    return -1;
 }
 
 static int findResourceIndex(const DesSimConfig *cfg, const char *name) {
@@ -96,29 +97,13 @@ static int findResourceIndex(const DesSimConfig *cfg, const char *name) {
     return DES_INVALID_ID;
 }
 
-static int findStageIndex(const DesSimConfig *cfg, const char *name) {
-    for (int i = 0; i < cfg->num_stages; i++) {
-        if (strcmp(cfg->stages[i].name, name) == 0) return i;
-    }
-    return DES_INVALID_ID;
-}
-
-static int findStateIndex(const DesStageDef *s, const char *name) {
-    for (int i = 0; i < s->num_states; i++) {
-        if (strcmp(s->state_names[i], name) == 0) return i;
-    }
-    return DES_INVALID_ID;
-}
-
-static int findEventIndex(const DesStageDef *s, const char *name) {
-    for (int i = 0; i < s->num_event_types; i++) {
-        if (strcmp(s->event_type_names[i], name) == 0) return i;
-    }
-    return DES_INVALID_ID;
-}
-
 DesSimConfig *DesConfig_loadJsonString(const char *json_string) {
     g_load_error[0] = '\0';
+
+    if (!json_string) {
+        set_load_error("JSON input is null", NULL);
+        return NULL;
+    }
 
     cJSON *root = cJSON_Parse(json_string);
     if (!root) {
@@ -127,6 +112,13 @@ DesSimConfig *DesConfig_loadJsonString(const char *json_string) {
     }
 
     DesSimConfig *cfg = DesConfig_create();
+    if (!cfg) {
+        cJSON_Delete(root);
+        set_load_error("out of memory", NULL);
+        return NULL;
+    }
+
+    DesConfig_setName(cfg, safeString(cJSON_GetObjectItem(root, "name"), "Imported scenario"));
 
     cJSON *sim = cJSON_GetObjectItem(root, "simulation");
     if (sim) {
@@ -163,23 +155,30 @@ DesSimConfig *DesConfig_loadJsonString(const char *json_string) {
             const char *res_name = safeString(cJSON_GetObjectItem(stage, "resource"), NULL);
             cJSON *mode_item = cJSON_GetObjectItem(stage, "mode");
             const char *mode = mode_item ? safeString(mode_item, "manual") : "manual";
+            if (strcmp(mode, "manual") != 0 && strcmp(mode, "resource") != 0) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "stage '%s': unknown mode '%s'", name, mode);
+                set_load_error(buf, NULL);
+                continue;
+            }
 
+            int res_id = DES_INVALID_ID;
             if (res_name) {
-                int res_id = findResourceIndex(cfg, res_name);
+                res_id = findResourceIndex(cfg, res_name);
                 if (res_id == DES_INVALID_ID) {
                     char buf[256];
                     snprintf(buf, sizeof(buf), "stage '%s': unknown resource '%s'", name, res_name);
                     set_load_error(buf, NULL);
                     continue;
                 }
+            }
 
-                if (strcmp(mode, "resource") == 0) {
-                    DesDistribution dist;
-                    parseDistribution(cJSON_GetObjectItem(stage, "processing_time"), &dist);
-                    DesStage_setResourceMode(cfg, stage_id, res_id, dist.type, dist.param1, dist.param2);
-                } else {
-                    DesStage_setResource(cfg, stage_id, res_id);
-                }
+            if (strcmp(mode, "resource") == 0) {
+                DesDistribution dist;
+                parseDistribution(cJSON_GetObjectItem(stage, "processing_time"), &dist);
+                DesStage_setResourceMode(cfg, stage_id, res_id, dist.type, dist.param1, dist.param2);
+            } else if (res_name) {
+                DesStage_setResource(cfg, stage_id, res_id);
             }
 
             if (strcmp(mode, "manual") == 0) {
@@ -189,6 +188,24 @@ DesSimConfig *DesConfig_loadJsonString(const char *json_string) {
                     for (int j = 0; j < n; j++) {
                         cJSON *s = cJSON_GetArrayItem(states, j);
                         DesStage_addState(cfg, stage_id, cJSON_GetStringValue(s));
+                    }
+                }
+
+                const char *initial_state = safeString(cJSON_GetObjectItem(stage, "initial_state"), NULL);
+                if (initial_state) {
+                    int initial_index = DES_INVALID_ID;
+                    for (int j = 0; j < cfg->stages[stage_id].num_states; j++) {
+                        if (strcmp(cfg->stages[stage_id].state_names[j], initial_state) == 0) {
+                            initial_index = j;
+                            break;
+                        }
+                    }
+                    if (initial_index == DES_INVALID_ID) {
+                        char buf[256];
+                        snprintf(buf, sizeof(buf), "stage '%s': unknown initial_state '%s'", name, initial_state);
+                        set_load_error(buf, NULL);
+                    } else {
+                        DesStage_setInitialState(cfg, stage_id, initial_index);
                     }
                 }
 
@@ -270,6 +287,24 @@ DesSimConfig *DesConfig_loadJsonString(const char *json_string) {
     }
 
     cJSON_Delete(root);
+
+    if (g_load_error[0] != '\0') {
+        DesConfig_destroy(cfg);
+        return NULL;
+    }
+    if (cfg->last_error[0] != '\0') {
+        set_load_error("invalid configuration", cfg->last_error);
+        DesConfig_destroy(cfg);
+        return NULL;
+    }
+
+    DesValidationResult validation;
+    if (!DesConfig_validate(cfg, &validation)) {
+        set_load_error("invalid configuration",
+                       validation.num_errors > 0 ? validation.errors[0] : "validation failed");
+        DesConfig_destroy(cfg);
+        return NULL;
+    }
     return cfg;
 }
 

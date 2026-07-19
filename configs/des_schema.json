@@ -4,14 +4,24 @@
   "description": "Configuration file for the Discrete Event Simulation framework",
   "type": "object",
   "properties": {
+    "format_version": {
+      "type": "integer",
+      "const": 1,
+      "default": 1,
+      "description": "Scenario format version"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable scenario name"
+    },
     "simulation": {
       "type": "object",
       "description": "Global simulation parameters",
       "properties": {
-        "max_time":          { "type": "integer", "default": 100000, "description": "Maximum simulation time units" },
-        "max_events":        { "type": "integer", "default": 100000, "description": "Maximum number of events to process" },
-        "entity_capacity":   { "type": "integer", "default": 0, "description": "Max entities (0 = auto from arrivals)" },
-        "seed":              { "type": "integer", "default": 0, "description": "RNG seed (0 = random)" }
+        "max_time":          { "type": "integer", "minimum": 1, "default": 100000, "description": "Maximum simulation time units" },
+        "max_events":        { "type": "integer", "minimum": 1, "default": 100000, "description": "Maximum number of events to process" },
+        "entity_capacity":   { "type": "integer", "minimum": 0, "default": 0, "description": "Max entities (0 = auto from arrivals)" },
+        "seed":              { "type": "integer", "minimum": 0, "default": 0, "description": "RNG seed (0 = random)" }
       }
     },
     "resources": {
@@ -23,7 +33,7 @@
         "properties": {
           "name":         { "type": "string", "description": "Unique resource name" },
           "count":        { "type": "integer", "minimum": 1, "description": "Number of instances" },
-          "available_at": { "type": "integer", "default": 0, "description": "Time when resource becomes available (0 = immediate)" }
+          "available_at": { "type": "integer", "minimum": 0, "default": 0, "description": "Time when resource becomes available (0 = immediate)" }
         }
       }
     },
@@ -46,6 +56,10 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "FSM state names (manual mode only)"
+          },
+          "initial_state": {
+            "type": "string",
+            "description": "Initial FSM state. Defaults to the first state for format-version-1 compatibility."
           },
           "event_types": {
             "type": "array",
@@ -72,6 +86,7 @@
                     "wait_retry",
                     "entity_enter",
                     "entity_exit",
+                    "custom",
                     "none"
                   ],
                   "description": "Action executed on this transition"
@@ -107,7 +122,7 @@
           "count":         { "type": "integer", "minimum": 1 },
           "entry_stage":   { "type": "string", "description": "Name of the first stage entities enter" },
           "inter_arrival": { "$ref": "#/definitions/distribution" },
-          "start_time":    { "type": "integer", "default": 0, "description": "Time when first entity arrives" },
+          "start_time":    { "type": "integer", "minimum": 0, "default": 0, "description": "Time when first entity arrives" },
           "priority":      { "type": "integer", "default": 0, "description": "Event priority (lower = higher priority)" }
         }
       }

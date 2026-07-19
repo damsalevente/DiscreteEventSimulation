@@ -7,6 +7,7 @@ struct DesEngine {
     const DesSimConfig *config;
     int  current_time;
     int  next_event_id;
+    int  events_processed;
     DesEventQueue queue;
     int       num_stages;
     DesStage *stages;
@@ -24,6 +25,7 @@ struct DesEngine {
     int              num_custom_actions;
     unsigned int rng_state;
     bool running;
+    bool seeded;
     bool error;
     DesErrorCode last_error;
 };

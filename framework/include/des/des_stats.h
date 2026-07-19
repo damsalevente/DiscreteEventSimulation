@@ -14,6 +14,10 @@ void DesStats_recordEntityTransition(struct DesEngine *engine, int entity_id,
 void DesStats_recordResourceState(struct DesEngine *engine, int time,
                                   int resource_type_id, int instance_id,
                                   int state, int entity_id);
+void DesStats_recordTransition(struct DesEngine *engine,
+                               const DesTransitionRecord *record);
+DesErrorCode DesStats_exportReplayJson(const struct DesEngine *engine,
+                                       const char *filepath);
 void DesStats_generateReport(const struct DesEngine *engine);
 void DesStats_printSummary(const struct DesEngine *engine);
 void DesStats_printConfigSummary(const struct DesEngine *engine);

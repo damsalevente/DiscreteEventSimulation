@@ -400,8 +400,6 @@ DesErrorCode DesMdf_exportResources(const struct DesEngine *engine,
     InstanceSeries *series = (InstanceSeries *)calloc((size_t)total_inst, sizeof(InstanceSeries));
     if (!series) return DES_ERR_OUT_OF_MEMORY;
 
-    /* Map resource_type_id -> a stage that owns it, to read state names. */
-    /* Find per type the max state index observed and its name list. */
     for (int i = 0; i < total_inst; i++) {
         series[i].cap = 0;
         series[i].count = 0;
@@ -409,32 +407,15 @@ DesErrorCode DesMdf_exportResources(const struct DesEngine *engine,
         series[i].states = NULL;
     }
 
-    /* Determine state names per resource type from the stage defs. */
+    /* Resource records represent occupancy, independently of stage FSM state. */
     for (int inst = 0; inst < total_inst; inst++) {
         int type_id = engine->resource_instances[inst].type_id;
         const char *type_name = engine->resource_types[type_id].name;
         snprintf(series[inst].name, sizeof(series[inst].name),
-                 "%s[%d]", type_name, inst);
-
-        /* Find a stage bound to this resource type to get state names. */
-        for (int s = 0; s < engine->num_stages; s++) {
-            if (engine->stages[s].resource_type_id == type_id) {
-                DesStage *st = &engine->stages[s];
-                series[inst].num_states = st->num_states;
-                for (int k = 0; k < st->num_states && k < 16; k++) {
-                    /* Recover name from config via original def. */
-                    const DesStageDef *def = &engine->config->stages[s];
-                    strncpy(series[inst].state_names[k], def->state_names[k], DES_MAX_NAME - 1);
-                }
-                break;
-            }
-        }
-        if (series[inst].num_states == 0) {
-            /* Fallback generic states. */
-            series[inst].num_states = 2;
-            strncpy(series[inst].state_names[0], "IDLE", DES_MAX_NAME - 1);
-            strncpy(series[inst].state_names[1], "BUSY", DES_MAX_NAME - 1);
-        }
+                 "%s[%d]", type_name, engine->resource_instances[inst].instance_id);
+        series[inst].num_states = 2;
+        strncpy(series[inst].state_names[0], "IDLE", DES_MAX_NAME - 1);
+        strncpy(series[inst].state_names[1], "BUSY", DES_MAX_NAME - 1);
     }
 
     /* Populate per-instance series from records. */
