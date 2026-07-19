@@ -139,27 +139,29 @@ The engine infers entry and completion event indices from the configured actions
 ```c
 #include "des/des.h"
 
-DesSimConfig cfg = DesConfig_init();
-int team = DesConfig_addResource(&cfg, "Test_Engineer", 3);
-int stage = DesConfig_addStage(&cfg, "System_Test");
+DesSimConfig *cfg = DesConfig_create();
+int team = DesConfig_addResource(cfg, "Test_Engineer", 3);
+int stage = DesConfig_addStage(cfg, "System_Test");
 
-DesStage_setResourceMode(&cfg, stage, team, DES_DIST_FIXED, 30, 0);
-DesStage_addOutcomeIdx(&cfg, stage, 1.0, DES_INVALID_ID, 0, "PASS");
-DesConfig_addArrivalIdx(&cfg, "Release", 50, stage, DES_DIST_FIXED, 10, 0);
-DesConfig_setSeed(&cfg, 42);
+DesStage_setResourceMode(cfg, stage, team, DES_DIST_FIXED, 30, 0);
+DesStage_addOutcomeIdx(cfg, stage, 1.0, DES_INVALID_ID, 0, "PASS");
+DesConfig_addArrivalIdx(cfg, "Release", 50, stage, DES_DIST_FIXED, 10, 0);
+DesConfig_setSeed(cfg, 42);
 
 DesValidationResult validation;
-if (!DesConfig_validate(&cfg, &validation)) {
+if (!DesConfig_validate(cfg, &validation)) {
+    DesConfig_destroy(cfg);
     return 1;
 }
 
-DesEngine *engine = DesEngine_create(&cfg);
+DesEngine *engine = DesEngine_create(cfg);
 DesErrorCode result = DesEngine_run(engine);
 DesStats_printSummary(engine);
 DesEngine_destroy(engine);
+DesConfig_destroy(cfg);
 ```
 
-`DesConfig_init()` and `DesConfig_create()` now provide identical runnable defaults. `DesConfig_saveJson()` is the shared, validated, atomic JSON serializer.
+`DesConfig_init()` (a macro for `DesConfig_create()`) and `DesConfig_create()` return a heap-allocated config with identical runnable defaults. Always call `DesConfig_destroy()` when done. `DesConfig_saveJson()` is the shared, validated, atomic JSON serializer.
 
 ## Repository structure
 

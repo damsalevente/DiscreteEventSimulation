@@ -101,9 +101,9 @@ void test_whatif_config_arrival_times(void) {
 }
 
 void test_whatif_programmatic_config_runs(void) {
-    DesSimConfig cfg = DesConfig_init();
-    makeWhatIfConfig(&cfg);
-    DesEngine *engine = DesEngine_create(&cfg);
+    DesSimConfig *cfg = DesConfig_create();
+    makeWhatIfConfig(cfg);
+    DesEngine *engine = DesEngine_create(cfg);
     TEST_ASSERT_NOT_NULL(engine);
 
     DesErrorCode ec = DesEngine_run(engine);
@@ -111,18 +111,20 @@ void test_whatif_programmatic_config_runs(void) {
     TEST_ASSERT_EQUAL_INT(15, DesEngine_getEntityCount(engine));
 
     DesEngine_destroy(engine);
+    DesConfig_destroy(cfg);
 }
 
 void test_whatif_all_entities_complete(void) {
-    DesSimConfig cfg = DesConfig_init();
-    makeWhatIfConfig(&cfg);
-    DesEngine *engine = DesEngine_create(&cfg);
+    DesSimConfig *cfg = DesConfig_create();
+    makeWhatIfConfig(cfg);
+    DesEngine *engine = DesEngine_create(cfg);
     DesEngine_run(engine);
 
     TEST_ASSERT_EQUAL_INT(15, engine->num_completed_entities);
     TEST_ASSERT_EQUAL_INT(0, engine->num_active_entities);
 
     DesEngine_destroy(engine);
+    DesConfig_destroy(cfg);
 }
 
 void test_whatif_vehicle_delayed(void) {
@@ -157,9 +159,9 @@ void test_whatif_json_simulation_runs(void) {
 }
 
 void test_whatif_resource_available_after(void) {
-    DesSimConfig cfg = DesConfig_init();
-    makeWhatIfConfig(&cfg);
-    DesEngine *engine = DesEngine_create(&cfg);
+    DesSimConfig *cfg = DesConfig_create();
+    makeWhatIfConfig(cfg);
+    DesEngine *engine = DesEngine_create(cfg);
     DesEngine_run(engine);
 
     TEST_ASSERT_EQUAL_INT(2, DesResource_getAvailable(engine, 0));
@@ -167,6 +169,7 @@ void test_whatif_resource_available_after(void) {
     TEST_ASSERT_EQUAL_INT(1, DesResource_getAvailable(engine, 2));
 
     DesEngine_destroy(engine);
+    DesConfig_destroy(cfg);
 }
 
 void test_whatif_clog_creates_queue(void) {

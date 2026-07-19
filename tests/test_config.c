@@ -16,11 +16,12 @@ void test_config_create_defaults(void) {
 }
 
 void test_config_stack_init(void) {
-    DesSimConfig cfg = DesConfig_init();
-    TEST_ASSERT_EQUAL_INT(0, cfg.num_resources);
-    TEST_ASSERT_EQUAL_INT(0, cfg.num_stages);
-    TEST_ASSERT_EQUAL_INT(0, cfg.num_arrivals);
-    TEST_ASSERT_EQUAL_INT(100000, cfg.max_time);
+    DesSimConfig *cfg = DesConfig_create();
+    TEST_ASSERT_EQUAL_INT(0, cfg->num_resources);
+    TEST_ASSERT_EQUAL_INT(0, cfg->num_stages);
+    TEST_ASSERT_EQUAL_INT(0, cfg->num_arrivals);
+    TEST_ASSERT_EQUAL_INT(100000, cfg->max_time);
+    DesConfig_destroy(cfg);
 }
 
 void test_config_add_resource(void) {
@@ -51,19 +52,20 @@ void test_config_add_stage(void) {
 }
 
 void test_config_add_transition_idx(void) {
-    DesSimConfig cfg = DesConfig_init();
-    int sid = DesConfig_addStage(&cfg, "S1");
-    int IDLE = DesStage_addState(&cfg, sid, "IDLE");
-    int BUSY = DesStage_addState(&cfg, sid, "BUSY");
-    int E1 = DesStage_addEventType(&cfg, sid, "E1");
-    DesStage_addTransitionIdx(&cfg, sid, IDLE, E1, BUSY, DES_ACTION_ACQUIRE_AND_PROCESS);
+    DesSimConfig *cfg = DesConfig_create();
+    int sid = DesConfig_addStage(cfg, "S1");
+    int IDLE = DesStage_addState(cfg, sid, "IDLE");
+    int BUSY = DesStage_addState(cfg, sid, "BUSY");
+    int E1 = DesStage_addEventType(cfg, sid, "E1");
+    DesStage_addTransitionIdx(cfg, sid, IDLE, E1, BUSY, DES_ACTION_ACQUIRE_AND_PROCESS);
 
-    TEST_ASSERT_EQUAL_INT(1, cfg.stages[sid].num_transitions);
-    TEST_ASSERT_EQUAL_INT(IDLE, cfg.stages[sid].transitions[0].state_index);
-    TEST_ASSERT_EQUAL_INT(E1, cfg.stages[sid].transitions[0].event_index);
-    TEST_ASSERT_EQUAL_INT(BUSY, cfg.stages[sid].transitions[0].next_state_index);
+    TEST_ASSERT_EQUAL_INT(1, cfg->stages[sid].num_transitions);
+    TEST_ASSERT_EQUAL_INT(IDLE, cfg->stages[sid].transitions[0].state_index);
+    TEST_ASSERT_EQUAL_INT(E1, cfg->stages[sid].transitions[0].event_index);
+    TEST_ASSERT_EQUAL_INT(BUSY, cfg->stages[sid].transitions[0].next_state_index);
     TEST_ASSERT_EQUAL_INT(DES_ACTION_ACQUIRE_AND_PROCESS,
-                          cfg.stages[sid].transitions[0].action_type);
+                          cfg->stages[sid].transitions[0].action_type);
+    DesConfig_destroy(cfg);
 }
 
 void test_config_add_transition_string(void) {
@@ -85,18 +87,19 @@ void test_config_add_transition_string(void) {
 }
 
 void test_config_add_outcome_idx(void) {
-    DesSimConfig cfg = DesConfig_init();
-    int s1 = DesConfig_addStage(&cfg, "Stage1");
-    int s2 = DesConfig_addStage(&cfg, "Stage2");
-    int ENTER = DesStage_addEventType(&cfg, s2, "ENTER");
-    DesStage_addOutcomeIdx(&cfg, s1, 0.7, s2, ENTER, "PASS");
-    DesStage_addOutcomeIdx(&cfg, s1, 0.3, DES_INVALID_ID, 0, "FAIL");
+    DesSimConfig *cfg = DesConfig_create();
+    int s1 = DesConfig_addStage(cfg, "Stage1");
+    int s2 = DesConfig_addStage(cfg, "Stage2");
+    int ENTER = DesStage_addEventType(cfg, s2, "ENTER");
+    DesStage_addOutcomeIdx(cfg, s1, 0.7, s2, ENTER, "PASS");
+    DesStage_addOutcomeIdx(cfg, s1, 0.3, DES_INVALID_ID, 0, "FAIL");
 
-    TEST_ASSERT_EQUAL_INT(2, cfg.stages[s1].num_outcomes);
-    TEST_ASSERT_EQUAL_INT(s2, cfg.stages[s1].outcomes[0].next_stage_id);
-    TEST_ASSERT_TRUE(cfg.stages[s1].outcomes[0].probability > 0.69);
-    TEST_ASSERT_TRUE(cfg.stages[s1].outcomes[0].probability < 0.71);
-    TEST_ASSERT_EQUAL_INT(DES_INVALID_ID, cfg.stages[s1].outcomes[1].next_stage_id);
+    TEST_ASSERT_EQUAL_INT(2, cfg->stages[s1].num_outcomes);
+    TEST_ASSERT_EQUAL_INT(s2, cfg->stages[s1].outcomes[0].next_stage_id);
+    TEST_ASSERT_TRUE(cfg->stages[s1].outcomes[0].probability > 0.69);
+    TEST_ASSERT_TRUE(cfg->stages[s1].outcomes[0].probability < 0.71);
+    TEST_ASSERT_EQUAL_INT(DES_INVALID_ID, cfg->stages[s1].outcomes[1].next_stage_id);
+    DesConfig_destroy(cfg);
 }
 
 void test_config_add_outcome_string(void) {
@@ -117,14 +120,15 @@ void test_config_add_outcome_string(void) {
 }
 
 void test_config_add_arrival_idx(void) {
-    DesSimConfig cfg = DesConfig_init();
-    int s = DesConfig_addStage(&cfg, "Entry");
-    int a = DesConfig_addArrivalIdx(&cfg, "Job", 10, s, DES_DIST_FIXED, 5, 0);
+    DesSimConfig *cfg = DesConfig_create();
+    int s = DesConfig_addStage(cfg, "Entry");
+    int a = DesConfig_addArrivalIdx(cfg, "Job", 10, s, DES_DIST_FIXED, 5, 0);
     TEST_ASSERT_EQUAL_INT(0, a);
-    TEST_ASSERT_EQUAL_INT(1, cfg.num_arrivals);
-    TEST_ASSERT_EQUAL_STRING("Job", cfg.arrivals[0].name);
-    TEST_ASSERT_EQUAL_INT(10, cfg.arrivals[0].entity_count);
-    TEST_ASSERT_EQUAL_INT(s, cfg.arrivals[0].entry_stage_id);
+    TEST_ASSERT_EQUAL_INT(1, cfg->num_arrivals);
+    TEST_ASSERT_EQUAL_STRING("Job", cfg->arrivals[0].name);
+    TEST_ASSERT_EQUAL_INT(10, cfg->arrivals[0].entity_count);
+    TEST_ASSERT_EQUAL_INT(s, cfg->arrivals[0].entry_stage_id);
+    DesConfig_destroy(cfg);
 }
 
 void test_json_load_string(void) {

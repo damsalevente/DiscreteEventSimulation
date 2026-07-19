@@ -4,7 +4,7 @@
 #include "des_types.h"
 
 DesSimConfig *DesConfig_create(void);
-DesSimConfig  DesConfig_initValue(void);
+void          DesConfig_initValue(DesSimConfig *cfg);
 void          DesConfig_destroy(DesSimConfig *cfg);
 
 const char   *DesConfig_getLastError(const DesSimConfig *cfg);
@@ -73,7 +73,7 @@ int  DesConfig_removeArrival(DesSimConfig *cfg, int arrival_id);
 
 /* --- Convenience macros --- */
 
-#define DesConfig_init()  DesConfig_initValue()
+#define DesConfig_init()  DesConfig_create()
 
 #define DES_DIST_FIX(v, d)      do { (d).type = DES_DIST_FIXED;      (d).param1 = (v); (d).param2 = 0; } while(0)
 #define DES_DIST_UNI(a, b, d)   do { (d).type = DES_DIST_UNIFORM;    (d).param1 = (a); (d).param2 = (b); } while(0)

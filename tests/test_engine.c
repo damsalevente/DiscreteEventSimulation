@@ -25,30 +25,32 @@ void setUp(void) {}
 void tearDown(void) {}
 
 void test_engine_create_destroy(void) {
-    DesSimConfig cfg = DesConfig_init();
-    makeSimpleConfig(&cfg);
-    DesEngine *engine = DesEngine_create(&cfg);
+    DesSimConfig *cfg = DesConfig_create();
+    makeSimpleConfig(cfg);
+    DesEngine *engine = DesEngine_create(cfg);
     TEST_ASSERT_NOT_NULL(engine);
     TEST_ASSERT_EQUAL_INT(0, engine->current_time);
     TEST_ASSERT_EQUAL_INT(1, engine->num_resource_types);
     TEST_ASSERT_EQUAL_INT(2, engine->resource_types[0].count);
     DesEngine_destroy(engine);
+    DesConfig_destroy(cfg);
 }
 
 void test_engine_run_completes(void) {
-    DesSimConfig cfg = DesConfig_init();
-    makeSimpleConfig(&cfg);
-    DesEngine *engine = DesEngine_create(&cfg);
+    DesSimConfig *cfg = DesConfig_create();
+    makeSimpleConfig(cfg);
+    DesEngine *engine = DesEngine_create(cfg);
     DesErrorCode ec = DesEngine_run(engine);
     TEST_ASSERT_EQUAL_INT(DES_OK, ec);
     TEST_ASSERT_EQUAL_INT(10, engine->num_completed_entities);
     DesEngine_destroy(engine);
+    DesConfig_destroy(cfg);
 }
 
 void test_engine_step(void) {
-    DesSimConfig cfg = DesConfig_init();
-    makeSimpleConfig(&cfg);
-    DesEngine *engine = DesEngine_create(&cfg);
+    DesSimConfig *cfg = DesConfig_create();
+    makeSimpleConfig(cfg);
+    DesEngine *engine = DesEngine_create(cfg);
 
     DesErrorCode ec = DesEngine_step(engine);
     TEST_ASSERT_EQUAL_INT(DES_OK, ec);
@@ -56,16 +58,18 @@ void test_engine_step(void) {
     TEST_ASSERT_EQUAL_INT(1, engine->num_active_entities);
 
     DesEngine_destroy(engine);
+    DesConfig_destroy(cfg);
 }
 
 void test_engine_resource_tracking(void) {
-    DesSimConfig cfg = DesConfig_init();
-    makeSimpleConfig(&cfg);
-    DesEngine *engine = DesEngine_create(&cfg);
+    DesSimConfig *cfg = DesConfig_create();
+    makeSimpleConfig(cfg);
+    DesEngine *engine = DesEngine_create(cfg);
 
     TEST_ASSERT_EQUAL_INT(2, DesResource_getAvailable(engine, 0));
 
     DesEngine_destroy(engine);
+    DesConfig_destroy(cfg);
 }
 
 int main(void) {

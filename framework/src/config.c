@@ -20,25 +20,23 @@ const char *DesError_toString(DesErrorCode code) {
     return "unknown error";
 }
 
-DesSimConfig DesConfig_initValue(void) {
-    DesSimConfig cfg;
-    memset(&cfg, 0, sizeof(cfg));
-    strncpy(cfg.name, "Untitled scenario", sizeof(cfg.name) - 1);
-    cfg.max_time = 100000;
-    cfg.max_events = DES_MAX_EVENTS;
-    cfg.entity_capacity = 0;
-    cfg.seed = 0;
-    cfg.stats.record_events = true;
-    cfg.stats.record_entity_flow = true;
-    cfg.stats.record_resource_util = false;
-    strncpy(cfg.stats.output_dir, "./output", sizeof(cfg.stats.output_dir) - 1);
-    return cfg;
+void DesConfig_initValue(DesSimConfig *cfg) {
+    memset(cfg, 0, sizeof(*cfg));
+    strncpy(cfg->name, "Untitled scenario", sizeof(cfg->name) - 1);
+    cfg->max_time = 100000;
+    cfg->max_events = DES_MAX_EVENTS;
+    cfg->entity_capacity = 0;
+    cfg->seed = 0;
+    cfg->stats.record_events = true;
+    cfg->stats.record_entity_flow = true;
+    cfg->stats.record_resource_util = false;
+    strncpy(cfg->stats.output_dir, "./output", sizeof(cfg->stats.output_dir) - 1);
 }
 
 DesSimConfig *DesConfig_create(void) {
     DesSimConfig *cfg = (DesSimConfig *)malloc(sizeof(DesSimConfig));
     if (!cfg) return NULL;
-    *cfg = DesConfig_initValue();
+    DesConfig_initValue(cfg);
     return cfg;
 }
 
